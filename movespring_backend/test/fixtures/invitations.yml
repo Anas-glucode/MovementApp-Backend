@@ -1,0 +1,13 @@
+one:
+  company: one
+  invited_by: one
+  email: invited-one@example.com
+  token_digest: fixture-token-digest-one
+  expires_at: <%= 7.days.from_now %>
+
+two:
+  company: two
+  invited_by: one
+  email: invited-two@example.com
+  token_digest: fixture-token-digest-two
+  expires_at: <%= 7.days.from_now %>

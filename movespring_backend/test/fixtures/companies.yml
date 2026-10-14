@@ -1,0 +1,9 @@
+one:
+  name: Test Company One
+  slug: test-company-one
+  status: active
+
+two:
+  name: Test Company Two
+  slug: test-company-two
+  status: active
