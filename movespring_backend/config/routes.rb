@@ -14,6 +14,8 @@ namespace :api do
     post "registrations", to: "registrations#create"
 post "sessions", to: "sessions#create"
 get "me", to: "profiles#show"
+    get "activities", to: "activities#index"
+    post "activities", to: "activities#create"
 post "invitations", to: "invitations#create"
 post "invitations/accept", to: "invitations#accept"
 get "employees", to: "employees#index"

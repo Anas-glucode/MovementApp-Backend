@@ -1,0 +1,34 @@
+one:
+  user: one
+  activity_type: walking
+  source: healthkit
+  source_record_id: healthkit-record-001
+  started_at: 2026-10-14 08:00:00
+  ended_at: 2026-10-14 08:30:00
+  duration_seconds: 1800
+  distance_meters: 2500.00
+  steps: 3200
+  active_calories: 120.00
+  average_heart_rate: 115
+  intensity_source: heart_rate
+  reported_intensity:
+  status: eligible
+  validated_at: 2026-10-14 08:35:00
+  time_zone: Africa/Johannesburg
+
+two:
+  user: two
+  activity_type: running
+  source: health_connect
+  source_record_id: health-connect-record-002
+  started_at: 2026-10-14 09:00:00
+  ended_at: 2026-10-14 09:30:00
+  duration_seconds: 1800
+  distance_meters: 5000.00
+  steps: 6000
+  active_calories: 350.00
+  average_heart_rate: 150
+  intensity_source: heart_rate
+  reported_intensity:
+  status: pending
+  time_zone: Africa/Johannesburg
