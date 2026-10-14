@@ -592,6 +592,128 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
 
 
+  test "unauthenticated users cannot submit activities" do
+    activity_count_before = Activity.count
+    started_at = 1.hour.ago
+
+    post "/api/v1/activities",
+         params: {
+           activity: {
+             activity_type: "walking",
+             started_at: started_at.iso8601,
+             ended_at: (started_at + 30.minutes).iso8601,
+             distance_meters: 2000
+           }
+         },
+         as: :json
+
+    assert_response :unauthorized
+    assert_equal activity_count_before, Activity.count
+  end
+
+  test "authenticated employees can submit manual activities" do
+    started_at = 1.hour.ago
+
+    post "/api/v1/activities",
+         params: {
+           activity: {
+             activity_type: "walking",
+             started_at: started_at.iso8601,
+             ended_at: (started_at + 30.minutes).iso8601,
+             distance_meters: 2000
+           }
+         },
+         headers: auth_headers(@employee),
+         as: :json
+
+    assert_response :created
+
+    body = response.parsed_body
+    activity = Activity.find(body.dig("activity", "id"))
+
+    assert_equal @employee.id, activity.user_id
+    assert_equal "manual", activity.source
+    assert_equal "eligible", activity.status
+    assert_equal 1800, activity.duration_seconds
+  end
+
+  test "activity submissions cannot override server-controlled fields" do
+    started_at = 1.hour.ago
+
+    post "/api/v1/activities",
+         params: {
+           activity: {
+             user_id: @other_employee.id,
+             activity_type: "walking",
+             source: "health_connect",
+             status: "rejected",
+             review_reason: "Forged reason",
+             points: 999999,
+             started_at: started_at.iso8601,
+             ended_at: (started_at + 30.minutes).iso8601,
+             distance_meters: 2000
+           }
+         },
+         headers: auth_headers(@employee),
+         as: :json
+
+    assert_response :created
+
+    body = response.parsed_body
+    activity = Activity.find(body.dig("activity", "id"))
+
+    assert_equal @employee.id, activity.user_id
+    assert_equal "manual", activity.source
+    assert_equal "eligible", activity.status
+    assert_nil activity.review_reason
+    assert_not activity.attributes.key?("points")
+  end
+
+
+  test "unauthenticated users cannot view activity history" do
+    get "/api/v1/activities", as: :json
+
+    assert_response :unauthorized
+  end
+
+  test "employees can only view their own activity history" do
+    own_activity = Activity.create!(
+      user: @employee,
+      activity_type: "walking",
+      source: "manual",
+      started_at: 2.hours.ago,
+      ended_at: 90.minutes.ago,
+      duration_seconds: 1800,
+      status: "eligible",
+      validated_at: Time.current,
+      time_zone: "Africa/Johannesburg"
+    )
+
+    other_activity = Activity.create!(
+      user: @other_employee,
+      activity_type: "running",
+      source: "manual",
+      started_at: 1.hour.ago,
+      ended_at: 30.minutes.ago,
+      duration_seconds: 1800,
+      status: "eligible",
+      validated_at: Time.current,
+      time_zone: "Africa/Johannesburg"
+    )
+
+    get "/api/v1/activities",
+        headers: auth_headers(@employee),
+        as: :json
+
+    assert_response :success
+
+    activity_ids = response.parsed_body.fetch("activities").pluck("id")
+
+    assert_includes activity_ids, own_activity.id
+    assert_not_includes activity_ids, other_activity.id
+  end
+
+
   private
 
   def create_company(name)

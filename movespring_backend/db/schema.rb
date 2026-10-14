@@ -10,9 +10,44 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_14_070817) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_14_115209) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "activities", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "activity_type", null: false
+    t.string "source", null: false
+    t.string "source_record_id"
+    t.datetime "started_at", null: false
+    t.datetime "ended_at", null: false
+    t.integer "duration_seconds", null: false
+    t.decimal "distance_meters", precision: 12, scale: 2
+    t.integer "steps"
+    t.decimal "active_calories", precision: 10, scale: 2
+    t.integer "average_heart_rate"
+    t.string "intensity_source"
+    t.integer "reported_intensity"
+    t.string "status", default: "pending", null: false
+    t.string "review_reason"
+    t.datetime "validated_at"
+    t.string "time_zone"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id", "source", "source_record_id"], name: "index_activities_on_unique_source_record", unique: true, where: "(source_record_id IS NOT NULL)"
+    t.index ["user_id", "started_at"], name: "index_activities_on_user_and_started_at"
+    t.index ["user_id", "status"], name: "index_activities_on_user_and_status"
+    t.index ["user_id"], name: "index_activities_on_user_id"
+    t.check_constraint "active_calories IS NULL OR active_calories >= 0::numeric", name: "activities_nonnegative_calories"
+    t.check_constraint "average_heart_rate IS NULL OR average_heart_rate >= 1 AND average_heart_rate <= 250", name: "activities_valid_heart_rate"
+    t.check_constraint "distance_meters IS NULL OR distance_meters >= 0::numeric", name: "activities_nonnegative_distance"
+    t.check_constraint "duration_seconds > 0", name: "activities_positive_duration"
+    t.check_constraint "ended_at > started_at", name: "activities_valid_time_range"
+    t.check_constraint "reported_intensity IS NULL OR reported_intensity >= 1 AND reported_intensity <= 10", name: "activities_valid_reported_intensity"
+    t.check_constraint "source::text = ANY (ARRAY['healthkit'::character varying, 'health_connect'::character varying, 'manual'::character varying]::text[])", name: "activities_valid_source"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'eligible'::character varying, 'under_review'::character varying, 'rejected'::character varying]::text[])", name: "activities_valid_status"
+    t.check_constraint "steps IS NULL OR steps >= 0", name: "activities_nonnegative_steps"
+  end
 
   create_table "companies", force: :cascade do |t|
     t.string "name", null: false
@@ -51,6 +86,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_14_070817) do
     t.index ["company_id"], name: "index_users_on_company_id"
   end
 
+  add_foreign_key "activities", "users"
   add_foreign_key "invitations", "companies"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "users", "companies"

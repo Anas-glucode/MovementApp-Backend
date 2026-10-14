@@ -1,6 +1,8 @@
 class User < ApplicationRecord
   belongs_to :company
 
+  has_many :activities, dependent: :destroy
+
   has_secure_password
 
   enum :role, {
