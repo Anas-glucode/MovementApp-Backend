@@ -1,6 +1,8 @@
 
 class Activity < ApplicationRecord
   belongs_to :user
+  has_one :activity_point_award, dependent: :destroy
+  has_one :activity_review, dependent: :restrict_with_error
 
   SOURCES = %w[healthkit health_connect manual].freeze
 
