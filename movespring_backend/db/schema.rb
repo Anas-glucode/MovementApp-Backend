@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_065935) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -74,6 +74,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_065935) do
     t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
   end
 
+  create_table "challenge_participations", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "user_id"], name: "index_challenge_participations_on_challenge_and_user", unique: true
+    t.index ["challenge_id"], name: "index_challenge_participations_on_challenge_id"
+    t.index ["user_id"], name: "index_challenge_participations_on_user_id"
+  end
+
+  create_table "challenges", force: :cascade do |t|
+    t.bigint "company_id", null: false
+    t.bigint "scoring_rule_version_id", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.datetime "starts_at", null: false
+    t.datetime "ends_at", null: false
+    t.string "status", default: "draft", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_id", "starts_at"], name: "index_challenges_on_company_id_and_starts_at"
+    t.index ["company_id", "status"], name: "index_challenges_on_company_id_and_status"
+    t.index ["company_id"], name: "index_challenges_on_company_id"
+    t.index ["scoring_rule_version_id"], name: "index_challenges_on_scoring_rule_version_id"
+    t.check_constraint "ends_at > starts_at", name: "challenges_valid_dates"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'active'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "challenges_valid_status"
+  end
+
   create_table "companies", force: :cascade do |t|
     t.string "name", null: false
     t.string "slug", null: false
@@ -130,6 +158,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_065935) do
   add_foreign_key "activity_point_awards", "scoring_rule_versions"
   add_foreign_key "activity_reviews", "activities"
   add_foreign_key "activity_reviews", "users", column: "reviewer_id"
+  add_foreign_key "challenge_participations", "challenges"
+  add_foreign_key "challenge_participations", "users"
+  add_foreign_key "challenges", "companies"
+  add_foreign_key "challenges", "scoring_rule_versions"
   add_foreign_key "invitations", "companies"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "users", "companies"

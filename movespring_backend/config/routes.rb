@@ -25,6 +25,15 @@ patch "employees/:id/deactivate", to: "employees#deactivate"
 patch "employees/:id/reactivate", to: "employees#reactivate"
 get "company", to: "companies#show"
 patch "company", to: "companies#update"
+get "activity_reviews", to: "activity_reviews#index"
+get "activity_reviews/:id", to: "activity_reviews#show"
+get "challenges", to: "challenges#index"
+post "challenges", to: "challenges#create"
+get "challenges/:id", to: "challenges#show"
+patch "challenges/:id", to: "challenges#update"
+patch "challenges/:id/publish", to: "challenges#publish"
+post "challenges/:id/join", to: "challenges#join"
+get "my_challenges", to: "challenges#mine"
   end
 end
 
