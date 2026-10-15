@@ -1,5 +1,6 @@
 class ScoringRuleVersion < ApplicationRecord
   has_many :activity_point_awards, dependent: :restrict_with_error
+  has_many :challenges, dependent: :restrict_with_error
 
   before_destroy :prevent_published_version_deletion
 
