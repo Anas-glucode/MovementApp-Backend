@@ -1,7 +1,5 @@
 Rails.application.routes.draw do
-  # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
-  # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   get "up" => "rails/health#show", as: :rails_health_check
 
   namespace :api do
@@ -13,7 +11,6 @@ Rails.application.routes.draw do
       get "activities", to: "activities#index"
       post "activities", to: "activities#create"
       
-      # Epic 3: Activity History Audit Trail
       get "activity_history", to: "activity_histories#index"
 
       post "activities/:id/review", to: "activity_reviews#create"
@@ -39,8 +36,13 @@ Rails.application.routes.draw do
       post "challenges/:id/join", to: "challenges#join"
       get "my_challenges", to: "challenges#mine"
 
-      # Epic 3: Employee Dashboard Summary
       get "dashboard", to: "dashboard#show"
+      
+      resources :badges, only: [:index] do
+        collection do
+          get :user_badges
+        end
+      end
     end
   end
 end
