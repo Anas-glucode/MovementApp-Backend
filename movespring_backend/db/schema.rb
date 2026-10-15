@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_14_115209) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_065935) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -49,6 +49,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_14_115209) do
     t.check_constraint "steps IS NULL OR steps >= 0", name: "activities_nonnegative_steps"
   end
 
+  create_table "activity_point_awards", force: :cascade do |t|
+    t.bigint "activity_id", null: false
+    t.bigint "scoring_rule_version_id", null: false
+    t.integer "points", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["activity_id"], name: "index_activity_point_awards_on_activity_id", unique: true
+    t.index ["scoring_rule_version_id"], name: "index_activity_point_awards_on_scoring_rule_version_id"
+    t.check_constraint "points >= 0", name: "activity_point_awards_nonnegative_points"
+  end
+
+  create_table "activity_reviews", force: :cascade do |t|
+    t.bigint "activity_id", null: false
+    t.bigint "reviewer_id", null: false
+    t.string "decision", null: false
+    t.text "reason"
+    t.datetime "reviewed_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["activity_id"], name: "index_activity_reviews_on_activity_id", unique: true
+    t.index ["reviewer_id"], name: "index_activity_reviews_on_reviewer_id"
+    t.check_constraint "decision::text <> 'rejected'::text OR length(TRIM(BOTH FROM reason)) > 0", name: "activity_reviews_rejection_requires_reason"
+    t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
+  end
+
   create_table "companies", force: :cascade do |t|
     t.string "name", null: false
     t.string "slug", null: false
@@ -73,6 +98,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_14_115209) do
     t.index ["token_digest"], name: "index_invitations_on_token_digest", unique: true
   end
 
+  create_table "scoring_rule_versions", force: :cascade do |t|
+    t.string "name", null: false
+    t.integer "version_number", null: false
+    t.string "status", default: "draft", null: false
+    t.jsonb "rules", default: {}, null: false
+    t.datetime "published_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["version_number"], name: "index_scoring_rule_versions_on_version_number", unique: true
+    t.check_constraint "jsonb_typeof(rules) = 'object'::text", name: "scoring_rule_versions_rules_must_be_object"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'retired'::character varying]::text[])", name: "scoring_rule_versions_valid_status"
+    t.check_constraint "version_number > 0", name: "scoring_rule_versions_positive_version"
+  end
+
   create_table "users", force: :cascade do |t|
     t.bigint "company_id", null: false
     t.string "name", null: false
@@ -87,6 +126,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_14_115209) do
   end
 
   add_foreign_key "activities", "users"
+  add_foreign_key "activity_point_awards", "activities"
+  add_foreign_key "activity_point_awards", "scoring_rule_versions"
+  add_foreign_key "activity_reviews", "activities"
+  add_foreign_key "activity_reviews", "users", column: "reviewer_id"
   add_foreign_key "invitations", "companies"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "users", "companies"

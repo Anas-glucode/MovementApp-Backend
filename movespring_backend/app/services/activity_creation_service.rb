@@ -100,13 +100,39 @@ class ActivityCreationService
       activity.status = "pending"
     end
 
-    if activity.save
-      { activity: activity }
-    else
-      { errors: activity.errors.full_messages }
+    result = nil
+
+    Activity.transaction do
+      if activity.save
+        if activity.status == "eligible"
+          scoring_rule_version = ScoringRuleVersion
+            .where(status: "published")
+            .where.not(published_at: nil)
+            .order(version_number: :desc)
+            .first
+
+          unless scoring_rule_version
+            raise ActivityScoringService::ScoringError,
+                  "No published scoring rules are available"
+          end
+
+          ActivityScoringService.call(
+            activity: activity,
+            scoring_rule_version: scoring_rule_version
+          )
+        end
+
+        result = { activity: activity }
+      else
+        result = { errors: activity.errors.full_messages }
+      end
     end
+
+    result
   rescue ActiveRecord::RecordNotUnique
     { errors: ["This activity has already been imported"] }
+  rescue ActivityScoringService::ScoringError => e
+    { errors: [e.message] }
   rescue ArgumentError, TypeError
     { errors: ["Invalid activity data"] }
   end
