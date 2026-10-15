@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_093157) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -72,6 +72,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
     t.index ["reviewer_id"], name: "index_activity_reviews_on_reviewer_id"
     t.check_constraint "decision::text <> 'rejected'::text OR length(TRIM(BOTH FROM reason)) > 0", name: "activity_reviews_rejection_requires_reason"
     t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying::text, 'rejected'::character varying::text])", name: "activity_reviews_valid_decision"
+  end
+
+  create_table "badges", force: :cascade do |t|
+    t.bigint "company_id"
+    t.string "name", null: false
+    t.text "description"
+    t.string "category", null: false
+    t.string "criteria_type", null: false
+    t.decimal "criteria_value", precision: 12, scale: 2, null: false
+    t.string "icon_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_id", "category"], name: "index_badges_on_company_id_and_category"
+    t.index ["company_id", "name"], name: "index_badges_on_company_id_and_name", unique: true
   end
 
   create_table "challenge_participations", force: :cascade do |t|
@@ -140,6 +154,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
     t.check_constraint "version_number > 0", name: "scoring_rule_versions_positive_version"
   end
 
+  create_table "user_badges", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "badge_id", null: false
+    t.bigint "activity_id"
+    t.datetime "earned_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["activity_id"], name: "index_user_badges_on_activity_id"
+    t.index ["badge_id"], name: "index_user_badges_on_badge_id"
+    t.index ["user_id", "badge_id"], name: "index_user_badges_on_user_id_and_badge_id", unique: true
+    t.index ["user_id"], name: "index_user_badges_on_user_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.bigint "company_id", null: false
     t.string "name", null: false
@@ -164,5 +191,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
   add_foreign_key "challenges", "scoring_rule_versions"
   add_foreign_key "invitations", "companies"
   add_foreign_key "invitations", "users", column: "invited_by_id"
+  add_foreign_key "user_badges", "activities"
+  add_foreign_key "user_badges", "badges"
+  add_foreign_key "user_badges", "users"
   add_foreign_key "users", "companies"
 end
