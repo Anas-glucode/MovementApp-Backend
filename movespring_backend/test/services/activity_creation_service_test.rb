@@ -1,7 +1,7 @@
 require "test_helper"
 
 class ActivityCreationServiceTest < ActiveSupport::TestCase
-  test "accepts a normal manual activity as eligible and awards points once" do
+  test "holds a normal manual activity for review without awarding points" do
     user = users(:one)
     started_at = 1.hour.ago
 
@@ -17,25 +17,14 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
     )
 
     assert result[:activity].present?, result[:errors].inspect
-
     activity = result[:activity]
 
     assert_equal "manual", activity.source
-    assert_equal "eligible", activity.status
+    assert_equal "under_review", activity.status
+    assert_equal "Manual activity requires review", activity.review_reason
     assert_equal 1800, activity.duration_seconds
-
-    award = activity.activity_point_award
-    assert award.present?, "Expected eligible activity to receive a point award"
-    assert_operator award.points, :>, 0
-
-    assert_no_difference("ActivityPointAward.count") do
-      repeated_award = ActivityScoringService.call(
-        activity: activity,
-        scoring_rule_version: award.scoring_rule_version
-      )
-
-      assert_equal award.id, repeated_award.id
-    end
+    assert_nil activity.activity_point_award
+    assert_equal 0, ChallengeActivityAward.where(activity_id: activity.id).count
   end
 
   test "holds an old manual activity for review without awarding points" do
@@ -107,24 +96,23 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
                     "Reported duration does not match the activity times"
   end
 
-  test "rolls back activity creation when no published scoring rules exist" do
+  test "accepts manual activity for review when no published scoring rules exist" do
     user = users(:one)
 
     ScoringRuleVersion.update_all(status: "draft", published_at: nil)
 
-    assert_no_difference("Activity.count") do
-      result = ActivityCreationService.call(
-        user: user,
-        source: "manual",
-        attributes: {
-          activity_type: "walking",
-          started_at: 1.hour.ago,
-          ended_at: 30.minutes.ago
-        }
-      )
+    result = ActivityCreationService.call(
+      user: user,
+      source: "manual",
+      attributes: {
+        activity_type: "walking",
+        started_at: 1.hour.ago,
+        ended_at: 30.minutes.ago
+      }
+    )
 
-      assert_includes result[:errors],
-                      "No published scoring rules are available"
-    end
+    assert result[:activity].present?, result[:errors].inspect
+    assert_equal "under_review", result[:activity].status
+    assert_nil result[:activity].activity_point_award
   end
 end

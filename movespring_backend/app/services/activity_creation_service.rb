@@ -89,13 +89,8 @@ class ActivityCreationService
     activity.source = @source
 
     if @source == "manual"
-      if manual_activity_suspicious?(activity)
-        activity.status = "under_review"
-        activity.review_reason = "Manual activity requires review"
-      else
-        activity.status = "eligible"
-        activity.validated_at = Time.current
-      end
+      activity.status = "under_review"
+      activity.review_reason = "Manual activity requires review"
     else
       activity.status = "pending"
     end
@@ -122,6 +117,9 @@ class ActivityCreationService
           )
         end
 
+
+ChallengeActivityScoringService.call_for_activity(activity: activity)
+
         result = { activity: activity }
       else
         result = { errors: activity.errors.full_messages }
@@ -131,7 +129,8 @@ class ActivityCreationService
     result
   rescue ActiveRecord::RecordNotUnique
     { errors: ["This activity has already been imported"] }
-  rescue ActivityScoringService::ScoringError => e
+  rescue ActivityScoringService::ScoringError,
+         ChallengeActivityScoringService::ScoringError => e
     { errors: [e.message] }
   rescue ArgumentError, TypeError
     { errors: ["Invalid activity data"] }

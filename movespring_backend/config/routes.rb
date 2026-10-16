@@ -34,6 +34,7 @@ patch "challenges/:id", to: "challenges#update"
 patch "challenges/:id/publish", to: "challenges#publish"
 post "challenges/:id/join", to: "challenges#join"
 get "my_challenges", to: "challenges#mine"
+get "challenges/:id/leaderboard", to: "challenges#leaderboard"
   end
 end
 

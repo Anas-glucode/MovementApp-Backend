@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_080953) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -72,6 +72,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
     t.index ["reviewer_id"], name: "index_activity_reviews_on_reviewer_id"
     t.check_constraint "decision::text <> 'rejected'::text OR length(TRIM(BOTH FROM reason)) > 0", name: "activity_reviews_rejection_requires_reason"
     t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
+  end
+
+  create_table "challenge_activity_awards", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "activity_id", null: false
+    t.bigint "scoring_rule_version_id", null: false
+    t.integer "points", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["activity_id"], name: "index_challenge_activity_awards_on_activity_id"
+    t.index ["challenge_id", "activity_id"], name: "index_challenge_activity_awards_on_challenge_and_activity", unique: true
+    t.index ["challenge_id"], name: "index_challenge_activity_awards_on_challenge_id"
+    t.index ["scoring_rule_version_id"], name: "index_challenge_activity_awards_on_scoring_rule_version_id"
+    t.check_constraint "points >= 0", name: "challenge_activity_awards_nonnegative_points"
   end
 
   create_table "challenge_participations", force: :cascade do |t|
@@ -158,6 +172,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_073607) do
   add_foreign_key "activity_point_awards", "scoring_rule_versions"
   add_foreign_key "activity_reviews", "activities"
   add_foreign_key "activity_reviews", "users", column: "reviewer_id"
+  add_foreign_key "challenge_activity_awards", "activities"
+  add_foreign_key "challenge_activity_awards", "challenges"
+  add_foreign_key "challenge_activity_awards", "scoring_rule_versions"
   add_foreign_key "challenge_participations", "challenges"
   add_foreign_key "challenge_participations", "users"
   add_foreign_key "challenges", "companies"

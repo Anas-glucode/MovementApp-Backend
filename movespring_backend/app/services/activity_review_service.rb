@@ -81,6 +81,8 @@ class ActivityReviewService
             activity: @activity,
             scoring_rule_version: scoring_rule_version
           )
+
+          ChallengeActivityScoringService.call_for_activity(activity: @activity)
         else
           @activity.update!(status: "rejected")
         end
@@ -88,7 +90,8 @@ class ActivityReviewService
         review
       end
     end
-  rescue ActivityScoringService::ScoringError => e
-    raise ReviewError, e.message
+rescue ActivityScoringService::ScoringError,
+       ChallengeActivityScoringService::ScoringError => e
+  raise ReviewError, e.message
   end
 end
