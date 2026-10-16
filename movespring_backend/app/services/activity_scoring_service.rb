@@ -27,21 +27,29 @@ class ActivityScoringService
         raise ScoringError, "Activity must be eligible before scoring"
       end
 
+      # One shared calculator does the maths for every kind of award
       rules = @scoring_rule_version.rules
-      sport_rates = rules.fetch("sport_rates")
-      intensity_multipliers = rules.fetch("intensity_multipliers")
+      points = PointsCalculator.call(activity: @activity, rules: rules)
 
-      sport_rate = sport_rates.fetch(@activity.activity_type) do
-        raise ScoringError, "No scoring rate for this activity type"
-      end
+      # DAILY CAP: lock this person's row first, so two activities scored at the
+      # same moment cannot both slip under the limit.
+      @activity.user.lock!
 
-      intensity = intensity_band(rules)
-      multiplier = intensity_multipliers.fetch(intensity) do
-        raise ScoringError, "No multiplier configured for #{intensity}"
-      end
+      # Points this person already earned on the same local day
+      already_awarded = ActivityPointAward
+        .joins(:activity)
+        .where(activities: {
+          user_id: @activity.user_id,
+          started_at: DailyPointCap.day_range(@activity)
+        })
+        .sum(:points)
 
-      minutes = @activity.duration_seconds / 60.0
-      points = (minutes * sport_rate.to_f * multiplier.to_f).round
+      points = DailyPointCap.apply(
+        points: points,
+        activity: @activity,
+        rules: rules,
+        already_awarded: already_awarded
+      )
 
       ActivityPointAward.create!(
         activity: @activity,
@@ -49,27 +57,10 @@ class ActivityScoringService
         points: points
       )
     end
+  rescue PointsCalculator::CalculationError => e
+    # Keep the services' own error type, with the same messages as before
+    raise ScoringError, e.message
   rescue KeyError
     raise ScoringError, "Scoring rules are missing a required setting"
-  end
-
-  private
-
-  def intensity_band(rules)
-    intensity = @activity.reported_intensity
-
-    return "baseline" if intensity.nil?
-
-    bands = rules.fetch("intensity_bands")
-    low_max = bands.fetch("low_max")
-    moderate_max = bands.fetch("moderate_max")
-
-    if intensity <= low_max
-      "low"
-    elsif intensity <= moderate_max
-      "moderate"
-    else
-      "high"
-    end
   end
 end

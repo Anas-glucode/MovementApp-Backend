@@ -34,6 +34,12 @@ class ActivityReviewService
       raise ReviewError, "You cannot review activities from another company"
     end
 
+    # Nobody marks their own homework: an admin who logged an activity cannot
+    # approve or reject it. A different admin has to do it.
+    if @activity.user_id == @reviewer.id
+      raise ReviewError, "You cannot review your own activity"
+    end
+
     if @decision == "rejected" && @reason.blank?
       raise ReviewError, "A reason is required when rejecting an activity"
     end
@@ -81,6 +87,8 @@ class ActivityReviewService
             activity: @activity,
             scoring_rule_version: scoring_rule_version
           )
+
+          ChallengeActivityScoringService.call_for_activity(activity: @activity)
         else
           @activity.update!(status: "rejected")
         end
@@ -88,7 +96,8 @@ class ActivityReviewService
         review
       end
     end
-  rescue ActivityScoringService::ScoringError => e
-    raise ReviewError, e.message
+rescue ActivityScoringService::ScoringError,
+       ChallengeActivityScoringService::ScoringError => e
+  raise ReviewError, e.message
   end
 end

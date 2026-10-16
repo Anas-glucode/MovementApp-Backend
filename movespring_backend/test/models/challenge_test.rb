@@ -15,7 +15,13 @@ class ChallengeTest < ActiveSupport::TestCase
       published_at: Time.current,
       rules: {
         "sport_rates" => {
-          "walking" => 1.0
+          "walking" => 1.0,
+          "running" => 1.5,
+          "cycling" => 1.2,
+          "swimming" => 1.5,
+          "football" => 1.3,
+          "strength_training" => 1.0,
+          "golf" => 0.7
         },
         "intensity_multipliers" => {
           "baseline" => 1.0,
@@ -86,6 +92,24 @@ class ChallengeTest < ActiveSupport::TestCase
   test "challenge belongs to a company and scoring rule version" do
     assert_equal @company, @challenge.company
     assert_equal @scoring_rule_version, @challenge.scoring_rule_version
+  end
+
+  test "scoring rule version cannot be changed after challenge creation" do
+    @challenge.save!
+    original_version_id = @challenge.scoring_rule_version_id
+
+    another_version = ScoringRuleVersion.create!(
+      name: "Alternative Challenge Rules",
+      version_number: next_scoring_version_number,
+      status: "published",
+      published_at: Time.current,
+      rules: @scoring_rule_version.rules
+    )
+
+    assert_not @challenge.update(scoring_rule_version: another_version)
+    assert_includes @challenge.errors[:scoring_rule_version],
+                    "cannot be changed after the challenge is created"
+    assert_equal original_version_id, @challenge.reload.scoring_rule_version_id
   end
 
   test "published scoring rule version cannot be deleted while referenced by a challenge" do

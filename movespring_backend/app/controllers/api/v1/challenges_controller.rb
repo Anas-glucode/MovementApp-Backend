@@ -3,7 +3,7 @@ module Api
     class ChallengesController < ApplicationController
       before_action :require_company_admin!, only: [:create, :update, :publish]
       before_action :require_employee!, only: [:join, :mine]
-      before_action :set_challenge, only: [:show, :update, :publish, :join]
+      before_action :set_challenge, only: [:show, :update, :publish, :join, :leaderboard]
 
       def index
         challenges = current_user.company.challenges
@@ -164,6 +164,73 @@ module Api
           error: "You have already joined this challenge"
         }, status: :conflict
       end
+
+    def leaderboard
+      return unless @challenge
+
+      unless current_user.company_admin? ||
+             %w[published active completed].include?(@challenge.status)
+        return render json: {
+          error: "Challenge not found in your company"
+        }, status: :not_found
+      end
+
+      participations = @challenge.challenge_participations.includes(:user).to_a
+      user_ids = participations.map(&:user_id)
+
+      points_by_user = if user_ids.empty?
+                         {}
+                       else
+                         ChallengeActivityAward
+                           .joins(:activity)
+                           .where(
+                             challenge_id: @challenge.id,
+                             scoring_rule_version_id: @challenge.scoring_rule_version_id
+                           )
+                           .where(
+                             activities: {
+                               user_id: user_ids,
+                               status: "eligible"
+                             }
+                           )
+                           .where(
+                             "activities.started_at >= ? AND activities.ended_at <= ?",
+                             @challenge.starts_at,
+                             @challenge.ends_at
+                           )
+                           .group("activities.user_id")
+                           .sum(:points)
+                       end
+
+      entries = participations.map do |participation|
+        {
+          user_id: participation.user.id,
+          name: participation.user.name,
+          points: points_by_user.fetch(participation.user_id, 0)
+        }
+      end
+
+      entries.sort_by! { |entry| [-entry[:points], entry[:name].downcase] }
+
+      previous_points = nil
+      current_rank = 0
+
+      entries.each_with_index do |entry, index|
+        if entry[:points] != previous_points
+          current_rank = index + 1
+          previous_points = entry[:points]
+        end
+
+        entry[:rank] = current_rank
+      end
+
+      render json: {
+        challenge_id: @challenge.id,
+        challenge_name: @challenge.name,
+        scoring_rule_version: @challenge.scoring_rule_version.version_number,
+        leaderboard: entries
+      }, status: :ok
+    end
 
       private
 
