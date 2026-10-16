@@ -46,8 +46,6 @@ module Api
           :distance_meters,
           :steps,
           :active_calories,
-          :average_heart_rate,
-          :intensity_source,
           :reported_intensity,
           :time_zone
         )

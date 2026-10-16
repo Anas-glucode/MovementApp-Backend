@@ -25,6 +25,44 @@ class ScoringRuleVersionTest < ActiveSupport::TestCase
                     "must be set for a published scoring version"
   end
 
+  test "rejects publishing rules with a missing or non-positive sport rate" do
+    invalid_rules = scoring_rule_versions(:one).rules.deep_dup
+    invalid_rules["sport_rates"].delete("golf")
+    invalid_rules["sport_rates"]["walking"] = -1.0
+
+    version = ScoringRuleVersion.new(
+      name: "Invalid Sport Rates",
+      version_number: 99,
+      status: "published",
+      published_at: Time.current,
+      rules: invalid_rules
+    )
+
+    assert_not version.valid?
+    assert_includes version.errors[:rules],
+                    "must include a positive sport rate for every supported activity type"
+  end
+
+  test "rejects publishing rules with invalid multipliers or intensity bands" do
+    invalid_rules = scoring_rule_versions(:one).rules.deep_dup
+    invalid_rules["intensity_multipliers"]["high"] = 0
+    invalid_rules["intensity_bands"]["moderate_max"] = 1
+
+    version = ScoringRuleVersion.new(
+      name: "Invalid Intensity Rules",
+      version_number: 99,
+      status: "published",
+      published_at: Time.current,
+      rules: invalid_rules
+    )
+
+    assert_not version.valid?
+    assert_includes version.errors[:rules],
+                    "must include positive baseline, low, moderate, and high intensity multipliers"
+    assert_includes version.errors[:rules],
+                    "must include valid intensity bands with low_max below moderate_max and moderate_max between 2 and 9"
+  end
+
   test "prevents editing rules after publication" do
     version = scoring_rule_versions(:one)
     original_rules = version.rules.deep_dup
@@ -45,6 +83,30 @@ class ScoringRuleVersionTest < ActiveSupport::TestCase
 
     assert version.save, version.errors.full_messages.inspect
     assert_equal "retired", version.reload.status
+  end
+
+  test "prevents editing rules after retirement" do
+    version = scoring_rule_versions(:one)
+    version.update!(status: "retired")
+
+    version.rules = version.rules.deep_dup.merge(
+      "sport_rates" => { "walking" => 999.0 }
+    )
+
+    assert_not version.save
+    assert_includes version.errors[:base],
+                    "Retired scoring rules cannot be edited"
+  end
+
+  test "prevents reactivating a retired version" do
+    version = scoring_rule_versions(:one)
+    version.update!(status: "retired")
+
+    version.status = "published"
+
+    assert_not version.save
+    assert_includes version.errors[:status],
+                    "cannot be changed once retired"
   end
 
   test "prevents deleting a published version" do

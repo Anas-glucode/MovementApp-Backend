@@ -85,18 +85,35 @@ class ActivityCreationService
       @attributes[:duration_seconds] = reported_duration
     end
 
+    if @source == "manual"
+      # Nothing measured a manual entry, so a heart rate typed in by the user
+      # is only a claim. Drop it.
+      @attributes.delete(:average_heart_rate)
+
+      # The server decides how effort was determined, never the client.
+      # An effort score means "self reported"; no score means no source at all.
+      @attributes[:intensity_source] =
+        @attributes[:reported_intensity].present? ? "self_reported" : nil
+    end
+
     activity = @user.activities.new(@attributes)
     activity.source = @source
 
     if @source == "manual"
-      if manual_activity_suspicious?(activity)
+      # Only odd-looking manual entries (too long, too old, or starting in the
+      # future) wait for an admin. Normal ones are trusted and scored straight away.
+      # Ask for a reason to hold this activity. nil means "looks fine".
+      review_reason = manual_review_reason(activity)
+
+      if review_reason
         activity.status = "under_review"
-        activity.review_reason = "Manual activity requires review"
+        activity.review_reason = review_reason
       else
         activity.status = "eligible"
         activity.validated_at = Time.current
       end
     else
+      # Imported workouts still start as "pending" until they are checked.
       activity.status = "pending"
     end
 
@@ -122,6 +139,9 @@ class ActivityCreationService
           )
         end
 
+
+ChallengeActivityScoringService.call_for_activity(activity: activity)
+
         result = { activity: activity }
       else
         result = { errors: activity.errors.full_messages }
@@ -131,7 +151,8 @@ class ActivityCreationService
     result
   rescue ActiveRecord::RecordNotUnique
     { errors: ["This activity has already been imported"] }
-  rescue ActivityScoringService::ScoringError => e
+  rescue ActivityScoringService::ScoringError,
+         ChallengeActivityScoringService::ScoringError => e
     { errors: [e.message] }
   rescue ArgumentError, TypeError
     { errors: ["Invalid activity data"] }
@@ -145,9 +166,35 @@ class ActivityCreationService
     Time.zone.parse(value.to_s)
   end
 
+  # Returns a short reason an admin should look at this entry, or nil if it
+  # looks normal. Overlap is checked first because it is the clearest sign of
+  # double-counting.
+  def manual_review_reason(activity)
+    if overlapping_activity_exists?(activity)
+      "Overlaps another activity"
+    elsif manual_activity_suspicious?(activity)
+      "Manual activity requires review"
+    end
+  end
+
+  # Does this person already have something logged during this time window?
+  # Two windows overlap when EACH one starts before the OTHER one ends, so
+  # back-to-back activities (end == next start) do not count as overlapping.
+  # Rejected activities are ignored, since they earn no points anyway.
+  def overlapping_activity_exists?(activity)
+    @user.activities
+         .where.not(status: "rejected")
+         .where("started_at < ? AND ended_at > ?",
+                activity.ended_at, activity.started_at)
+         .exists?
+  end
+
+  # The "this looks odd" rules: too long, too old, starting in the future,
+  # or ending in the future (which would earn points for time not yet spent).
   def manual_activity_suspicious?(activity)
     activity.duration_seconds > MAX_MANUAL_DURATION_SECONDS ||
       activity.started_at > MAX_FUTURE_START_MINUTES.minutes.from_now ||
+      activity.ended_at > MAX_FUTURE_START_MINUTES.minutes.from_now ||
       activity.started_at < MAX_MANUAL_AGE_DAYS.days.ago
   end
 end
