@@ -34,6 +34,12 @@ class ActivityReviewService
       raise ReviewError, "You cannot review activities from another company"
     end
 
+    # Nobody marks their own homework: an admin who logged an activity cannot
+    # approve or reject it. A different admin has to do it.
+    if @activity.user_id == @reviewer.id
+      raise ReviewError, "You cannot review your own activity"
+    end
+
     if @decision == "rejected" && @reason.blank?
       raise ReviewError, "A reason is required when rejecting an activity"
     end
