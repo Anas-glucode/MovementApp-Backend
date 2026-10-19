@@ -1,4 +1,3 @@
-
 class TokenService
   LIFETIME = 30.minutes
 
@@ -13,21 +12,11 @@ class TokenService
       exp: (Time.current + LIFETIME).to_i
     }
 
-    JWT.encode(
-      payload,
-      secret,
-      "HS256"
-    )
+    JWT.encode(payload, secret, "HS256")
   end
 
   def self.decode(token)
-    payload, = JWT.decode(
-      token,
-      secret,
-      true,
-      algorithm: "HS256"
-    )
-
+    payload, = JWT.decode(token, secret, true, algorithm: "HS256")
     payload
   rescue JWT::DecodeError
     nil

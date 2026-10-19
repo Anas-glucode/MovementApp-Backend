@@ -3,6 +3,7 @@ class User < ApplicationRecord
   has_many :activities, dependent: :destroy
   has_many :challenge_participations, dependent: :destroy
   has_many :joined_challenges, through: :challenge_participations, source: :challenge
+  has_many :messages, dependent: :destroy
 
   has_secure_password
 
