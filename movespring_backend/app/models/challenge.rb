@@ -6,6 +6,8 @@ class Challenge < ApplicationRecord
   has_many :participants, through: :challenge_participations, source: :user
   has_many :challenge_activity_awards, dependent: :destroy
 
+  has_one :chat_room, dependent: :destroy
+
   STATUSES = %w[
     draft
     published
