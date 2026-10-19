@@ -7,10 +7,7 @@ class CreateMessages < ActiveRecord::Migration[8.0]
 
       t.timestamps
     end
+
     add_index :messages, [:chat_room_id, :created_at]
   end
 end
-
-Run your migrations:
-```bash
-bundle exec rails db:migrate

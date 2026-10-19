@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_093157) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -130,6 +130,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_093157) do
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'completed'::character varying::text, 'cancelled'::character varying::text])", name: "challenges_valid_status"
   end
 
+  create_table "chat_rooms", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.string "name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id"], name: "index_chat_rooms_on_challenge_id", unique: true
+  end
+
   create_table "companies", force: :cascade do |t|
     t.string "name", null: false
     t.string "slug", null: false
@@ -152,6 +160,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_093157) do
     t.index ["company_id"], name: "index_invitations_on_company_id"
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
     t.index ["token_digest"], name: "index_invitations_on_token_digest", unique: true
+  end
+
+  create_table "messages", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "chat_room_id", null: false
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["chat_room_id", "created_at"], name: "index_messages_on_chat_room_id_and_created_at"
+    t.index ["chat_room_id"], name: "index_messages_on_chat_room_id"
+    t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
   create_table "scoring_rule_versions", force: :cascade do |t|
@@ -206,8 +225,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_093157) do
   add_foreign_key "challenge_participations", "users"
   add_foreign_key "challenges", "companies"
   add_foreign_key "challenges", "scoring_rule_versions"
+  add_foreign_key "chat_rooms", "challenges"
   add_foreign_key "invitations", "companies"
   add_foreign_key "invitations", "users", column: "invited_by_id"
+  add_foreign_key "messages", "chat_rooms"
+  add_foreign_key "messages", "users"
   add_foreign_key "user_badges", "activities"
   add_foreign_key "user_badges", "badges"
   add_foreign_key "user_badges", "users"
