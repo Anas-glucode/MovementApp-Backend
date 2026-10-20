@@ -1,19 +1,19 @@
 # Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
 
 one:
-  company_id: 
-  name: MyString
-  description: MyText
-  category: MyString
-  criteria_type: MyString
-  criteria_value: 9.99
-  icon_url: MyString
+  company: one
+  name: Ten Thousand Steps
+  description: Awarded for reaching a step goal.
+  category: activity
+  criteria_type: steps
+  criteria_value: 10000
+  icon_url:
 
 two:
-  company_id: 
-  name: MyString
-  description: MyText
-  category: MyString
-  criteria_type: MyString
-  criteria_value: 9.99
-  icon_url: MyString
+  company: two
+  name: Walking Champion
+  description: Awarded for completing a walking goal.
+  category: activity
+  criteria_type: steps
+  criteria_value: 5000
+  icon_url:
