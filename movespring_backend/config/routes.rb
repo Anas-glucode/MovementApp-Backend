@@ -7,8 +7,8 @@ Rails.application.routes.draw do
   
   namespace :api do
     namespace :v1 do
-      get "password_resets/create"
-      get "password_resets/update"
+      post "password_resets", to: "password_resets#create"
+      patch "password_resets", to: "password_resets#update"
       post "registrations", to: "registrations#create"
       post "sessions", to: "sessions#create"
       post   "sessions/refresh", to: "sessions#refresh"
@@ -24,6 +24,7 @@ delete "sessions",         to: "sessions#destroy"
 delete "invitations/:id",        to: "invitations#destroy"
 post   "invitations/:id/resend", to: "invitations#resend"
       get "employees", to: "employees#index"
+      patch "employees/:id/role", to: "employees#change_role"
       patch "employees/:id", to: "employees#update"
       patch "employees/:id/deactivate", to: "employees#deactivate"
       patch "employees/:id/reactivate", to: "employees#reactivate"

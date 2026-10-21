@@ -53,6 +53,33 @@ class RefreshTokensTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  test "logout succeeds without a valid access token" do
+    login = register_and_login
+    access_token = login.fetch("token")
+    travel 31.minutes
+
+    delete "/api/v1/sessions", as: :json,
+           params: { refresh_token: login["refresh_token"] },
+           headers: { "Authorization" => "Bearer #{access_token}" }
+
+    assert_response :no_content
+    post "/api/v1/sessions/refresh", as: :json,
+         params: { refresh_token: login["refresh_token"] }
+    assert_response :unauthorized
+  end
+
+  test "logout with an unknown refresh token does not revoke other sessions" do
+    login = register_and_login
+
+    delete "/api/v1/sessions", as: :json,
+           params: { refresh_token: "unknown-refresh-token" }
+
+    assert_response :no_content
+    post "/api/v1/sessions/refresh", as: :json,
+         params: { refresh_token: login["refresh_token"] }
+    assert_response :ok
+  end
+
   test "changing the password cancels refresh tokens" do
     login = register_and_login
 

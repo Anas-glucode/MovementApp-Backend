@@ -22,6 +22,7 @@ class User < ApplicationRecord
                     format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :role, presence: true
   validates :status, presence: true
+  validates :password, length: { minimum: 8 }, if: -> { password.present? }
 
   private
 

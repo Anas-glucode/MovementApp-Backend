@@ -3,29 +3,29 @@ module Api
   module V1
     class InvitationsController < ApplicationController
       skip_before_action :authenticate_user!, only: [:accept]
+      before_action :require_company_admin!, only: [:create, :index, :destroy, :resend]
 
       def create
-        unless current_user.company_admin?
-          return render json: {
-            error: "Only company administrators can invite employees"
-          }, status: :forbidden
-        end
-
         result = InvitationService.call(
           invited_by: current_user,
           email: invitation_params[:email]
         )
 
         if result[:invitation]
-          render json: {
+          response_body = {
             message: "Invitation created successfully",
             invitation: {
               id: result[:invitation].id,
               email: result[:invitation].email,
               expires_at: result[:invitation].expires_at
-            },
-            invitation_token: result[:token]
-          }, status: :created
+            }
+          }
+
+          response_body[:invitation_token] = result[:token] unless Rails.env.production?
+
+          InvitationMailer.invite(result[:invitation], result[:token]).deliver_later
+
+          render json: response_body, status: :created
         else
           render json: {
             errors: result[:errors]
@@ -46,6 +46,10 @@ module Api
 
           render json: {
             message: "Invitation accepted successfully",
+            token: TokenService.issue(user),
+            refresh_token: RefreshTokenService.issue(user),
+            token_type: "Bearer",
+            expires_in: TokenService::LIFETIME.to_i,
             user: {
               id: user.id,
               name: user.name,
@@ -90,14 +94,26 @@ def resend
   end
 
   if result[:invitation]
-    render json: { message: "Invitation resent",
-                   invitation_token: result[:token] }, status: :created
+    response_body = { message: "Invitation resent" }
+    response_body[:invitation_token] = result[:token] unless Rails.env.production?
+
+    InvitationMailer.invite(result[:invitation], result[:token]).deliver_later
+
+    render json: response_body, status: :created
   else
     render json: { errors: result[:errors] }, status: :unprocessable_entity
   end
 end
 
       private
+
+      def require_company_admin!
+        return if current_user.company_admin?
+
+        render json: {
+          error: "Only company administrators can manage invitations"
+        }, status: :forbidden
+      end
 
       def invitation_params
         params.require(:invitation).permit(:email)

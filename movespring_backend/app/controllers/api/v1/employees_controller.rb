@@ -2,12 +2,13 @@
 module Api
   module V1
     class EmployeesController < ApplicationController
-     before_action :require_company_admin!, only: [
-  :index,
-  :update,
-  :deactivate,
-  :reactivate
-]
+      before_action :require_company_admin!, only: [
+        :index,
+        :update,
+        :deactivate,
+        :reactivate,
+        :change_role
+      ]
 
       def index
         employees = current_user.company.users.order(:name)
@@ -73,28 +74,42 @@ def reactivate
   end
 end
 
-# route: patch "employees/:id/role", to: "employees#change_role"
-# add :change_role to the require_company_admin! list
+      def change_role
+        employee = find_company_employee
+        return unless employee
 
-def change_role
-  employee = find_company_employee
-  return unless employee
+        new_role = params[:role].to_s
+        unless User.roles.key?(new_role)
+          return render json: { error: "Invalid role" },
+                        status: :unprocessable_entity
+        end
 
-  new_role = params.require(:role).to_s
-  unless User.roles.key?(new_role)
-    return render json: { error: "Invalid role" }, status: :unprocessable_entity
-  end
+        result = nil
+        current_user.company.with_lock do
+          if employee.company_admin? && new_role == "employee" &&
+             last_active_admin?(employee)
+            result = :last_admin
+          else
+            result = employee.update(role: new_role) ? :ok : :invalid
+          end
+        end
 
-  current_user.company.with_lock do   # one admin change at a time
-    if employee.company_admin? && new_role == "employee" && last_active_admin?(employee)
-      return render json: { error: "The last active company administrator cannot be demoted" },
-                    status: :unprocessable_entity
-    end
-    employee.update!(role: new_role)
-  end
-
-  render json: { message: "Role updated", employee: employee_json(employee) }, status: :ok
-end
+        case result
+        when :ok
+          render json: {
+            message: "Role updated",
+            employee: employee_json(employee)
+          }, status: :ok
+        when :last_admin
+          render json: {
+            error: "The last active company administrator cannot be demoted"
+          }, status: :unprocessable_entity
+        else
+          render json: {
+            errors: employee.errors.full_messages
+          }, status: :unprocessable_entity
+        end
+      end
 
       private
 
