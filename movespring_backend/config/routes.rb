@@ -7,14 +7,22 @@ Rails.application.routes.draw do
   
   namespace :api do
     namespace :v1 do
+      get "password_resets/create"
+      get "password_resets/update"
       post "registrations", to: "registrations#create"
       post "sessions", to: "sessions#create"
+      post   "sessions/refresh", to: "sessions#refresh"
+delete "sessions/all",     to: "sessions#destroy_all"
+delete "sessions",         to: "sessions#destroy"
       get "me", to: "profiles#show"
       get "activities", to: "activities#index"
       post "activities", to: "activities#create"
       post "activities/:id/review", to: "activity_reviews#create"
       post "invitations", to: "invitations#create"
       post "invitations/accept", to: "invitations#accept"
+      get    "invitations",            to: "invitations#index"
+delete "invitations/:id",        to: "invitations#destroy"
+post   "invitations/:id/resend", to: "invitations#resend"
       get "employees", to: "employees#index"
       patch "employees/:id", to: "employees#update"
       patch "employees/:id/deactivate", to: "employees#deactivate"
@@ -31,6 +39,10 @@ Rails.application.routes.draw do
       post "challenges/:id/join", to: "challenges#join"
       get "my_challenges", to: "challenges#mine"
       get "challenges/:id/leaderboard", to: "challenges#leaderboard"
+      get  "challenges/:challenge_id/teams",   to: "teams#index"
+      post "challenges/:challenge_id/teams",   to: "teams#create"
+      get  "challenges/:challenge_id/my_team", to: "teams#mine"
+      
 
       resources :chat_rooms, only: [] do
         resources :messages, only: [:index]

@@ -49,7 +49,54 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
     assert_equal "Login successful", body["message"]
     assert body["token"].present?
+    assert body["refresh_token"].present?
+    assert_equal 1, @admin.refresh_tokens.count
     assert_equal @admin.id, body.dig("user", "id")
+  end
+
+  test "refreshing a session rotates the refresh token" do
+    old_refresh_token = RefreshTokenService.issue(@admin)
+
+    post "/api/v1/sessions/refresh",
+         params: { refresh_token: old_refresh_token },
+         as: :json
+
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert body["token"].present?
+    assert body["refresh_token"].present?
+    assert_not_equal old_refresh_token, body["refresh_token"]
+    assert_equal 2, @admin.refresh_tokens.count
+  end
+
+  test "logging out revokes only the supplied session" do
+    refresh_token = RefreshTokenService.issue(@admin)
+    other_refresh_token = RefreshTokenService.issue(@admin)
+
+    delete "/api/v1/sessions",
+           params: { refresh_token: refresh_token },
+           headers: auth_headers(@admin),
+           as: :json
+
+    assert_response :no_content
+    revoked_token = @admin.refresh_tokens.find_by!(
+      token_digest: Digest::SHA256.hexdigest(refresh_token)
+    )
+    active_token = @admin.refresh_tokens.find_by!(
+      token_digest: Digest::SHA256.hexdigest(other_refresh_token)
+    )
+    assert revoked_token.revoked_at.present?
+    assert_nil active_token.revoked_at
+  end
+
+  test "logging out everywhere revokes all refresh tokens" do
+    RefreshTokenService.issue(@admin)
+    RefreshTokenService.issue(@admin)
+
+    delete "/api/v1/sessions/all", headers: auth_headers(@admin)
+
+    assert_response :no_content
+    assert_empty @admin.refresh_tokens.where(revoked_at: nil)
   end
 
   test "inactive users cannot log in" do
@@ -323,6 +370,25 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
     assert_not User.exists?(email: email)
     assert_nil invitation.reload.accepted_at
+  end
+
+  test "revoked invitations are not pending or usable" do
+    email = unique_email
+    result = InvitationService.call(invited_by: @admin, email: email)
+
+    assert result[:invitation].present?,
+           result[:errors].inspect
+
+    invitation = result[:invitation]
+    invitation.update!(revoked_at: Time.current)
+
+    assert invitation.revoked?
+    assert_not invitation.usable?
+    assert_not Invitation.pending.exists?(id: invitation.id)
+
+    replacement = InvitationService.call(invited_by: @admin, email: email)
+    assert replacement[:invitation].present?,
+           replacement[:errors].inspect
   end
 
     test "tampered authentication tokens are rejected" do

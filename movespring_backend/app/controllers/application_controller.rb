@@ -25,6 +25,14 @@ class ApplicationController < ActionController::API
 
     @current_user = User.find_by(id: payload["sub"])
 
+    unless @current_user && ActiveSupport::SecurityUtils.secure_compare(
+  @current_user.password_salt.last(10), payload["pwd"].to_s
+)
+  @current_user = nil
+  return render json: { error: "Invalid or expired authentication token" },
+                status: :unauthorized
+end
+
     unless @current_user&.active? && @current_user.company.active?
       @current_user = nil
 
@@ -32,5 +40,6 @@ class ApplicationController < ActionController::API
         error: "Account is inactive or unavailable"
       }, status: :unauthorized
     end
+    
   end
 end

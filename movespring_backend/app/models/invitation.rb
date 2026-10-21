@@ -15,16 +15,22 @@ class Invitation < ApplicationRecord
   validates :expires_at, presence: true
 
   validate :no_duplicate_pending_invitation
-  validate :inviter_must_be_company_admin
+  validate :inviter_must_be_company_admin, on: :create
   validate :invitation_expiry_must_be_in_future, on: :create
   validate :email_must_not_belong_to_existing_user, on: :create
+  
 
   scope :pending, -> {
-    where(accepted_at: nil).where("expires_at > ?", Time.current)
+    where(accepted_at: nil, revoked_at: nil)
+      .where("expires_at > ?", Time.current)
   }
 
   def accepted?
     accepted_at.present?
+  end
+
+  def revoked?
+    revoked_at.present?
   end
 
   def expired?
@@ -32,7 +38,7 @@ class Invitation < ApplicationRecord
   end
 
   def usable?
-    !accepted? && !expired?
+    !accepted? && !revoked? && !expired?
   end
 
   private
@@ -52,9 +58,7 @@ class Invitation < ApplicationRecord
   def no_duplicate_pending_invitation
     return if company_id.blank? || email.blank?
 
-    existing = Invitation
-      .where(company_id: company_id, email: email, accepted_at: nil)
-      .where("expires_at > ?", Time.current)
+    existing = Invitation.pending.where(company_id: company_id, email: email, accepted_at: nil, revoked_at: nil)
 
     existing = existing.where.not(id: id) if persisted?
 
