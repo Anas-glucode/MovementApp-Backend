@@ -1,5 +1,5 @@
 class RefreshTokenService
-  LIFETIME = 30.days
+  LIFETIME = 90.days
 
   # Creates a new season ticket. Returns the RAW token, which is the only
   # time it exists in readable form. We save just its fingerprint.
@@ -57,12 +57,11 @@ class RefreshTokenService
     result
   end
 
-  # Logout: cancels this ticket's whole family (this login session).
-  # Scoped to the user so nobody can log out someone else.
-  def self.revoke(raw, user:)
+  # Logout: the refresh token identifies the session family to cancel.
+  def self.revoke(raw)
     return if raw.blank?
 
-    record = user.refresh_tokens.find_by(
+    record = RefreshToken.find_by(
       token_digest: Digest::SHA256.hexdigest(raw.to_s)
     )
     revoke_family(record.family_id) if record

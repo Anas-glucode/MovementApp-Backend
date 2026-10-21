@@ -75,7 +75,6 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
     delete "/api/v1/sessions",
            params: { refresh_token: refresh_token },
-           headers: auth_headers(@admin),
            as: :json
 
     assert_response :no_content
@@ -147,14 +146,16 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
   end
 
   test "company administrators can create employee invitations" do
-    post "/api/v1/invitations",
-         params: {
-           invitation: {
-             email: unique_email
-           }
-         },
-         headers: auth_headers(@admin),
-         as: :json
+    assert_enqueued_emails 1 do
+      post "/api/v1/invitations",
+           params: {
+             invitation: {
+               email: unique_email
+             }
+           },
+           headers: auth_headers(@admin),
+           as: :json
+    end
 
     assert_response :created
 
@@ -163,6 +164,24 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
     assert_equal "Invitation created successfully", body["message"]
     assert body.dig("invitation", "id").present?
     assert body["invitation_token"].present?
+  end
+
+  test "resending an invitation returns the token outside production and emails it" do
+    email = unique_email
+    result = InvitationService.call(invited_by: @admin, email: email)
+    old_invitation = result.fetch(:invitation)
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/invitations/#{old_invitation.id}/resend",
+           headers: auth_headers(@admin),
+           as: :json
+    end
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "Invitation resent", body["message"]
+    assert body["invitation_token"].present?
+    assert old_invitation.reload.revoked?
   end
 
   test "employees cannot create employee invitations" do
@@ -176,6 +195,30 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
          as: :json
 
     assert_response :forbidden
+    assert_equal(
+      "Only company administrators can manage invitations",
+      response.parsed_body["error"]
+    )
+  end
+
+  test "employees cannot list, cancel, or resend invitations" do
+    result = InvitationService.call(
+      invited_by: @admin,
+      email: unique_email
+    )
+    invitation = result.fetch(:invitation)
+    headers = auth_headers(@employee)
+
+    get "/api/v1/invitations", headers: headers
+    assert_response :forbidden
+
+    delete "/api/v1/invitations/#{invitation.id}", headers: headers
+    assert_response :forbidden
+
+    post "/api/v1/invitations/#{invitation.id}/resend", headers: headers
+    assert_response :forbidden
+
+    assert_not invitation.reload.revoked?
   end
 
   test "invitation acceptance creates an employee in the correct company" do
@@ -200,12 +243,25 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
     assert_response :created
 
+    body = response.parsed_body
     user = User.find_by!(email: email)
 
+    assert body["token"].present?
+    assert body["refresh_token"].present?
+    assert_equal "Bearer", body["token_type"]
+    assert_equal TokenService::LIFETIME.to_i, body["expires_in"]
     assert_equal @company.id, user.company_id
     assert user.employee?
     assert user.active?
+    assert_equal user.id, body.dig("user", "id")
     assert result[:invitation].reload.accepted?
+
+    get "/api/v1/me",
+        headers: { "Authorization" => "Bearer #{body['token']}" },
+        as: :json
+
+    assert_response :ok
+    assert_equal user.id, response.parsed_body.dig("user", "id")
   end
 
   test "invitation tokens cannot be accepted more than once" do
@@ -476,6 +532,75 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
     assert_equal "Employee One", @employee.name
   end
 
+  test "employees cannot change their own role" do
+    patch "/api/v1/employees/#{@employee.id}/role",
+          params: { role: "company_admin" },
+          headers: auth_headers(@employee),
+          as: :json
+
+    assert_response :forbidden
+    assert @employee.reload.employee?
+  end
+
+  test "employees receive forbidden for role changes and invitation management" do
+    result = InvitationService.call(
+      invited_by: @admin,
+      email: unique_email
+    )
+    invitation = result.fetch(:invitation)
+    headers = auth_headers(@employee)
+
+    patch "/api/v1/employees/#{@employee.id}/role",
+          params: { role: "company_admin" },
+          headers: headers,
+          as: :json
+    assert_response :forbidden
+
+    get "/api/v1/invitations", headers: headers
+    assert_response :forbidden
+
+    delete "/api/v1/invitations/#{invitation.id}", headers: headers
+    assert_response :forbidden
+
+    post "/api/v1/invitations/#{invitation.id}/resend", headers: headers
+    assert_response :forbidden
+
+    assert @employee.reload.employee?
+    assert_not invitation.reload.revoked?
+  end
+
+  test "company administrators can change an employee role" do
+    patch "/api/v1/employees/#{@employee.id}/role",
+          params: { role: "company_admin" },
+          headers: auth_headers(@admin),
+          as: :json
+
+    assert_response :ok
+    assert @employee.reload.company_admin?
+    assert_equal "company_admin", response.parsed_body.dig("employee", "role")
+  end
+
+  test "invalid employee roles are rejected" do
+    patch "/api/v1/employees/#{@employee.id}/role",
+          params: { role: "owner" },
+          headers: auth_headers(@admin),
+          as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal "Invalid role", response.parsed_body["error"]
+    assert @employee.reload.employee?
+  end
+
+  test "the last active company administrator cannot be demoted" do
+    patch "/api/v1/employees/#{@admin.id}/role",
+          params: { role: "employee" },
+          headers: auth_headers(@admin),
+          as: :json
+
+    assert_response :unprocessable_entity
+    assert @admin.reload.company_admin?
+  end
+
   test "administrators cannot update employees from another company" do
     patch "/api/v1/employees/#{@other_employee.id}",
           params: {
@@ -490,6 +615,37 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
     @other_employee.reload
     assert_equal "Employee Two", @other_employee.name
+  end
+
+  test "company administrators cannot change roles or manage another company's invitations" do
+    patch "/api/v1/employees/#{@other_employee.id}/role",
+          params: { role: "company_admin" },
+          headers: auth_headers(@admin),
+          as: :json
+
+    assert_response :not_found
+    assert @other_employee.reload.employee?
+
+    result = InvitationService.call(
+      invited_by: create_user(@other_company, role: "company_admin", name: "Other Admin"),
+      email: unique_email
+    )
+    other_invitation = result.fetch(:invitation)
+
+    get "/api/v1/invitations", headers: auth_headers(@admin)
+    assert_response :ok
+    invitation_ids = response.parsed_body.fetch("invitations").map { |item| item["id"] }
+    assert_not_includes invitation_ids, other_invitation.id
+
+    delete "/api/v1/invitations/#{other_invitation.id}",
+           headers: auth_headers(@admin)
+    assert_response :not_found
+
+    post "/api/v1/invitations/#{other_invitation.id}/resend",
+         headers: auth_headers(@admin)
+    assert_response :not_found
+
+    assert_not other_invitation.reload.revoked?
   end
 
   test "company administrators can deactivate employees" do
