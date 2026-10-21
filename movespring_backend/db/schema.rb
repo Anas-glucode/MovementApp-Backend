@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -44,8 +44,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
     t.check_constraint "duration_seconds > 0", name: "activities_positive_duration"
     t.check_constraint "ended_at > started_at", name: "activities_valid_time_range"
     t.check_constraint "reported_intensity IS NULL OR reported_intensity >= 1 AND reported_intensity <= 10", name: "activities_valid_reported_intensity"
-    t.check_constraint "source::text = ANY (ARRAY['healthkit'::character varying::text, 'health_connect'::character varying::text, 'manual'::character varying::text])", name: "activities_valid_source"
-    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'eligible'::character varying::text, 'under_review'::character varying::text, 'rejected'::character varying::text])", name: "activities_valid_status"
+    t.check_constraint "source::text = ANY (ARRAY['healthkit'::character varying, 'health_connect'::character varying, 'manual'::character varying]::text[])", name: "activities_valid_source"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'eligible'::character varying, 'under_review'::character varying, 'rejected'::character varying]::text[])", name: "activities_valid_status"
     t.check_constraint "steps IS NULL OR steps >= 0", name: "activities_nonnegative_steps"
   end
 
@@ -71,7 +71,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
     t.index ["activity_id"], name: "index_activity_reviews_on_activity_id", unique: true
     t.index ["reviewer_id"], name: "index_activity_reviews_on_reviewer_id"
     t.check_constraint "decision::text <> 'rejected'::text OR length(TRIM(BOTH FROM reason)) > 0", name: "activity_reviews_rejection_requires_reason"
-    t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying::text, 'rejected'::character varying::text])", name: "activity_reviews_valid_decision"
+    t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
   end
 
   create_table "badges", force: :cascade do |t|
@@ -122,12 +122,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
     t.string "status", default: "draft", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "challenge_type", default: "individual", null: false
+    t.integer "team_goal_points"
     t.index ["company_id", "starts_at"], name: "index_challenges_on_company_id_and_starts_at"
     t.index ["company_id", "status"], name: "index_challenges_on_company_id_and_status"
     t.index ["company_id"], name: "index_challenges_on_company_id"
     t.index ["scoring_rule_version_id"], name: "index_challenges_on_scoring_rule_version_id"
+    t.check_constraint "challenge_type::text = ANY (ARRAY['individual'::character varying, 'team'::character varying]::text[])", name: "challenges_valid_type"
     t.check_constraint "ends_at > starts_at", name: "challenges_valid_dates"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'completed'::character varying::text, 'cancelled'::character varying::text])", name: "challenges_valid_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'active'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "challenges_valid_status"
+    t.check_constraint "team_goal_points IS NULL OR team_goal_points > 0", name: "challenges_positive_team_goal"
   end
 
   create_table "chat_rooms", force: :cascade do |t|
@@ -156,6 +160,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
     t.datetime "accepted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "revoked_at"
     t.index ["company_id", "email"], name: "index_invitations_on_company_id_and_email"
     t.index ["company_id"], name: "index_invitations_on_company_id"
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
@@ -173,6 +178,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
     t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
+  create_table "refresh_tokens", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "token_digest", null: false
+    t.string "family_id", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "revoked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["family_id"], name: "index_refresh_tokens_on_family_id"
+    t.index ["token_digest"], name: "index_refresh_tokens_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_refresh_tokens_on_user_id"
+  end
+
   create_table "scoring_rule_versions", force: :cascade do |t|
     t.string "name", null: false
     t.integer "version_number", null: false
@@ -183,8 +201,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
     t.datetime "updated_at", null: false
     t.index ["version_number"], name: "index_scoring_rule_versions_on_version_number", unique: true
     t.check_constraint "jsonb_typeof(rules) = 'object'::text", name: "scoring_rule_versions_rules_must_be_object"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'retired'::character varying::text])", name: "scoring_rule_versions_valid_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'retired'::character varying]::text[])", name: "scoring_rule_versions_valid_status"
     t.check_constraint "version_number > 0", name: "scoring_rule_versions_positive_version"
+  end
+
+  create_table "team_memberships", force: :cascade do |t|
+    t.bigint "team_id", null: false
+    t.bigint "user_id", null: false
+    t.bigint "challenge_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "user_id"], name: "index_team_memberships_on_challenge_and_user", unique: true
+    t.index ["challenge_id"], name: "index_team_memberships_on_challenge_id"
+    t.index ["team_id"], name: "index_team_memberships_on_team_id"
+    t.index ["user_id"], name: "index_team_memberships_on_user_id"
+  end
+
+  create_table "teams", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.string "name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "name"], name: "index_teams_on_challenge_id_and_name", unique: true
+    t.index ["challenge_id"], name: "index_teams_on_challenge_id"
   end
 
   create_table "user_badges", force: :cascade do |t|
@@ -230,6 +269,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_075156) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "chat_rooms"
   add_foreign_key "messages", "users"
+  add_foreign_key "refresh_tokens", "users"
+  add_foreign_key "team_memberships", "challenges"
+  add_foreign_key "team_memberships", "teams"
+  add_foreign_key "team_memberships", "users"
+  add_foreign_key "teams", "challenges"
   add_foreign_key "user_badges", "activities"
   add_foreign_key "user_badges", "badges"
   add_foreign_key "user_badges", "users"

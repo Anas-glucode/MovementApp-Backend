@@ -5,6 +5,7 @@ module Api
       before_action :require_employee!, only: [:join, :mine]
       before_action :set_challenge, only: [:show, :update, :publish, :join, :leaderboard]
 
+
       def index
         challenges = current_user.company.challenges
                                   .order(starts_at: :asc, id: :asc)
@@ -69,7 +70,7 @@ module Api
           }, status: :created
         else
           render json: {
-            error: challenge.errors.full_messages
+            errors: challenge.errors.full_messages
           }, status: :unprocessable_entity
         end
       end
@@ -90,7 +91,7 @@ module Api
           }, status: :ok
         else
           render json: {
-            error: challenge.errors.full_messages
+            errors: @challenge.errors.full_messages
           }, status: :unprocessable_entity
         end
       end
@@ -117,53 +118,68 @@ module Api
           }, status: :ok
         else
           render json: {
-            error: @challenge.errors.full_messages
+            errors: @challenge.errors.full_messages
           }, status: :unprocessable_entity
         end
       end
 
       def join
-        return unless @challenge
+  return unless @challenge
 
-        if @challenge.status != "published" ||
-           @challenge.starts_at <= Time.current
-          return render json: {
-            error: "This challenge is not open for joining"
-          }, status: :unprocessable_entity
-        end
+  if @challenge.status != "published" ||
+     @challenge.starts_at <= Time.current
+    return render json: {
+      error: "This challenge is not open for joining"
+    }, status: :unprocessable_entity
+  end
 
-        if current_user.challenge_participations.exists?(
-          challenge_id: @challenge.id
-        )
-          return render json: {
-            error: "You have already joined this challenge"
-          }, status: :conflict
-        end
+  if current_user.challenge_participations.exists?(
+    challenge_id: @challenge.id
+  )
+    return render json: {
+      error: "You have already joined this challenge"
+    }, status: :conflict
+  end
 
-        participation = current_user.challenge_participations.new(
-          challenge: @challenge
-        )
+  participation = current_user.challenge_participations.new(
+    challenge: @challenge
+  )
+  team = nil
 
-        if participation.save
-          render json: {
-            message: "You have joined the challenge successfully",
-            participation: {
-              id: participation.id,
-              challenge_id: participation.challenge_id,
-              joined_at: participation.created_at.iso8601
-            },
-            challenge: challenge_json(@challenge)
-          }, status: :created
-        else
-          render json: {
-            error: participation.errors.full_messages
-          }, status: :unprocessable_entity
-        end
-      rescue ActiveRecord::RecordNotUnique
-        render json: {
-          error: "You have already joined this challenge"
-        }, status: :conflict
-      end
+  # One all-or-nothing step: joining and landing on a team succeed together.
+  # If the team step raises, the join is rolled back as well.
+  ChallengeParticipation.transaction do
+    if participation.save
+      team = TeamAssignmentService.call(challenge: @challenge, user: current_user)
+    end
+  end
+
+  if participation.persisted?
+    render json: {
+      message: "You have joined the challenge successfully",
+      participation: {
+        id: participation.id,
+        challenge_id: participation.challenge_id,
+        joined_at: participation.created_at.iso8601
+      },
+      # null when it's an individual challenge or teams aren't formed yet
+      team: team && { id: team.id, name: team.name },
+      challenge: challenge_json(@challenge)
+    }, status: :created
+  else
+    render json: {
+      errors: participation.errors.full_messages
+    }, status: :unprocessable_entity
+  end
+rescue ActiveRecord::RecordNotUnique
+  render json: {
+    error: "You have already joined this challenge"
+  }, status: :conflict
+rescue ActiveRecord::RecordInvalid => e
+  render json: {
+    errors: e.record.errors.full_messages
+  }, status: :unprocessable_entity
+end
 
     def leaderboard
       return unless @challenge
@@ -261,12 +277,7 @@ module Api
       end
 
       def challenge_params
-        params.require(:challenge).permit(
-          :name,
-          :description,
-          :starts_at,
-          :ends_at
-        )
+        params.require(:challenge).permit(:name, :description, :starts_at, :ends_at, :challenge_type, :team_goal_points)
       end
 
       def challenge_json(challenge)
@@ -277,6 +288,7 @@ module Api
           starts_at: challenge.starts_at.iso8601,
           ends_at: challenge.ends_at.iso8601,
           status: challenge.status,
+          challenge_type: challenge.challenge_type,
           scoring_rule_version: challenge.scoring_rule_version.version_number,
           company_id: challenge.company_id,
           created_at: challenge.created_at.iso8601,

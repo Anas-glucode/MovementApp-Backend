@@ -61,6 +61,42 @@ module Api
         end
       end
 
+      def index
+  invitations = current_user.company.invitations.pending.order(created_at: :desc)
+  render json: { invitations: invitations.map { |i|
+    { id: i.id, email: i.email, expires_at: i.expires_at }
+  } }
+end
+
+def destroy
+  invitation = current_user.company.invitations.pending.find_by(id: params[:id])
+  return render json: { error: "Invitation not found" }, status: :not_found unless invitation
+
+  # update_columns skips validations so an old invite can still be
+  # cancelled even if the original inviter was deactivated since
+  invitation.update_columns(revoked_at: Time.current)
+  head :no_content
+end
+
+def resend
+  old = current_user.company.invitations.pending.find_by(id: params[:id])
+  return render json: { error: "Invitation not found" }, status: :not_found unless old
+
+  result = nil
+  Invitation.transaction do
+    old.update_columns(revoked_at: Time.current)   # cancel the old link
+    result = InvitationService.call(invited_by: current_user, email: old.email)
+    raise ActiveRecord::Rollback unless result[:invitation]  # undo if new one fails
+  end
+
+  if result[:invitation]
+    render json: { message: "Invitation resent",
+                   invitation_token: result[:token] }, status: :created
+  else
+    render json: { errors: result[:errors] }, status: :unprocessable_entity
+  end
+end
+
       private
 
       def invitation_params

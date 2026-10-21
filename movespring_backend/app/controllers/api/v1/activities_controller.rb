@@ -2,7 +2,7 @@ module Api
   module V1
     class ActivitiesController < ApplicationController
       def index
-        activities = current_user.activities
+        activities = current_user.activities.includes(:activity_point_award)
                                  .order(started_at: :desc)
                                  .limit(100)
 
@@ -14,7 +14,7 @@ module Api
       def create
         unless params[:activity].is_a?(ActionController::Parameters)
           return render json: {
-            error: ["Activity details are required"]
+            error: "Activity details are required"
           }, status: :bad_request
         end
 
@@ -31,7 +31,7 @@ module Api
           }, status: :created
         else
           render json: {
-            error: result[:errors]
+            errors: result[:errors]
           }, status: :unprocessable_entity
         end
       end
@@ -66,6 +66,7 @@ module Api
           status: activity.status,
           review_reason: activity.review_reason,
           validated_at: activity.validated_at,
+          points: activity.activity_point_award&.points,
           created_at: activity.created_at.iso8601
         }
       end

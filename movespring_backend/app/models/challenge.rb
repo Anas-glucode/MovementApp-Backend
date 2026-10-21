@@ -6,6 +6,15 @@ class Challenge < ApplicationRecord
   has_many :participants, through: :challenge_participations, source: :user
   has_many :challenge_activity_awards, dependent: :destroy
 
+  has_many :teams, dependent: :destroy
+
+CHALLENGE_TYPES = %w[individual team].freeze
+validates :challenge_type, presence: true, inclusion: { in: CHALLENGE_TYPES }
+
+def team?
+  challenge_type == "team"
+end
+
   has_one :chat_room, dependent: :destroy
 
   STATUSES = %w[
@@ -22,6 +31,22 @@ class Challenge < ApplicationRecord
 
   validate :ends_after_starts
   validate :scoring_rule_version_is_immutable, on: :update
+
+  validates :team_goal_points,
+          numericality: { only_integer: true, greater_than: 0 },
+          allow_nil: true
+
+validate :team_goal_only_for_team_challenges
+
+# ...and in the private section:
+
+# An individual challenge has no teams, so a team goal makes no sense there
+def team_goal_only_for_team_challenges
+  return if team_goal_points.blank?
+  return if team?
+
+  errors.add(:team_goal_points, "can only be set on team challenges")
+end
 
   private
 
