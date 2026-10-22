@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_073851) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_110501) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -126,14 +126,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_073851) do
     t.string "challenge_type", default: "individual", null: false
     t.integer "team_goal_points"
     t.datetime "finalized_at"
+    t.string "team_scoring_method", default: "average", null: false
+    t.datetime "registration_deadline"
+    t.integer "max_participants"
     t.index ["company_id", "starts_at"], name: "index_challenges_on_company_id_and_starts_at"
     t.index ["company_id", "status"], name: "index_challenges_on_company_id_and_status"
     t.index ["company_id"], name: "index_challenges_on_company_id"
     t.index ["scoring_rule_version_id"], name: "index_challenges_on_scoring_rule_version_id"
     t.check_constraint "challenge_type::text = ANY (ARRAY['individual'::character varying::text, 'team'::character varying::text])", name: "challenges_valid_type"
     t.check_constraint "ends_at > starts_at", name: "challenges_valid_dates"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'active'::character varying, 'finalizing'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "challenges_valid_status"
+    t.check_constraint "max_participants IS NULL OR max_participants > 0", name: "challenges_positive_max_participants"
+    t.check_constraint "registration_deadline IS NULL OR registration_deadline <= starts_at", name: "challenges_deadline_before_start"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'finalizing'::character varying::text, 'completed'::character varying::text, 'cancelled'::character varying::text])", name: "challenges_valid_status"
     t.check_constraint "team_goal_points IS NULL OR team_goal_points > 0", name: "challenges_positive_team_goal"
+    t.check_constraint "team_scoring_method::text = ANY (ARRAY['average'::character varying::text, 'total'::character varying::text])", name: "challenges_valid_team_scoring_method"
   end
 
   create_table "chat_rooms", force: :cascade do |t|

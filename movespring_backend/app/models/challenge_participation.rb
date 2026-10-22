@@ -9,6 +9,7 @@ class ChallengeParticipation < ApplicationRecord
 
   validate :user_and_challenge_must_belong_to_same_company
   validate :challenge_must_be_open_for_joining
+  validate :challenge_must_have_room, on: :create
 
   private
 
@@ -19,12 +20,22 @@ class ChallengeParticipation < ApplicationRecord
     errors.add(:user, "must belong to the same company as the challenge")
   end
 
+  # Open means: published, and the registration deadline (or the start, if
+  # there is no deadline) has not passed yet.
   def challenge_must_be_open_for_joining
     return if challenge.blank?
-    return if challenge.status == "published" &&
-              challenge.starts_at.present? &&
-              challenge.starts_at > Time.current
+    return if challenge.open_for_joining?
 
     errors.add(:challenge, "is not open for joining")
+  end
+
+  # The "full" check is only reliable if the challenge row is locked while
+  # joining, so two people can't grab the last spot together. The controller
+  # does that lock.
+  def challenge_must_have_room
+    return if challenge.blank?
+    return unless challenge.full?
+
+    errors.add(:challenge, "is full")
   end
 end

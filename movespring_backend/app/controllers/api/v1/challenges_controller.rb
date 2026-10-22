@@ -6,8 +6,8 @@ module Api
       VISIBLE_TO_EMPLOYEES = %w[published active finalizing completed].freeze
 
       before_action :require_company_admin!, only: [:create, :update, :publish, :finalize, :cancel]
-      before_action :require_employee!, only: [:join, :mine]
-      before_action :set_challenge, only: [:show, :update, :publish, :join, :finalize, :cancel, :leaderboard]
+      before_action :require_employee!, only: [:join, :leave, :mine]
+      before_action :set_challenge, only: [:show, :update, :publish, :join, :leave, :finalize, :cancel, :leaderboard]
 
       def index
         # includes(:scoring_rule_version): challenge_json reads it for every
@@ -20,8 +20,11 @@ module Api
           challenges = challenges.where(status: VISIBLE_TO_EMPLOYEES)
         end
 
+        list = challenges.to_a
+        counts = participant_counts_for(list)
+
         render json: {
-          challenges: challenges.map { |challenge| challenge_json(challenge) }
+          challenges: list.map { |challenge| challenge_json(challenge, counts) }
         }, status: :ok
       end
 
@@ -29,11 +32,13 @@ module Api
         participations = current_user.challenge_participations
                                      .includes(challenge: :scoring_rule_version)
                                      .order(created_at: :desc)
+                                     .to_a
+
+        list = participations.map(&:challenge)
+        counts = participant_counts_for(list)
 
         render json: {
-          challenges: participations.map do |participation|
-            challenge_json(participation.challenge)
-          end
+          challenges: list.map { |challenge| challenge_json(challenge, counts) }
         }, status: :ok
       end
 
@@ -188,8 +193,7 @@ module Api
       def join
         return unless @challenge
 
-        if @challenge.status != "published" ||
-           @challenge.starts_at <= Time.current
+        unless @challenge.open_for_joining?
           return render json: {
             error: "This challenge is not open for joining"
           }, status: :unprocessable_entity
@@ -211,6 +215,12 @@ module Api
         # One all-or-nothing step: joining and landing on a team succeed together.
         # If the team step raises, the join is rolled back as well.
         ChallengeParticipation.transaction do
+          # CHANGED: lock the challenge first. With a maximum number of
+          # participants, two people joining at the same instant could both
+          # see "one spot left" and both get in. The lock makes them queue up,
+          # like two people reaching for the last seat one after the other.
+          @challenge.lock!
+
           if participation.save
             team = TeamAssignmentService.call(challenge: @challenge, user: current_user)
           end
@@ -243,6 +253,21 @@ module Api
         }, status: :unprocessable_entity
       end
 
+      # DELETE /api/v1/challenges/:id/join
+      # Leaves the challenge (and the team spot with it). Only before the start.
+      def leave
+        return unless @challenge
+
+        result = ChallengeLeaveService.call(challenge: @challenge, user: current_user)
+
+        if result[:left]
+          render json: { message: "You have left the challenge" }, status: :ok
+        else
+          status = result[:reason] == :not_joined ? :not_found : :unprocessable_entity
+          render json: { error: result[:errors].first }, status: status
+        end
+      end
+
       def leaderboard
         return unless @challenge
 
@@ -253,61 +278,11 @@ module Api
           }, status: :not_found
         end
 
-        participations = @challenge.challenge_participations.includes(:user).to_a
-        user_ids = participations.map(&:user_id)
-
-        points_by_user = if user_ids.empty?
-                           {}
-                         else
-                           ChallengeActivityAward
-                             .joins(:activity)
-                             .where(
-                               challenge_id: @challenge.id,
-                               scoring_rule_version_id: @challenge.scoring_rule_version_id
-                             )
-                             .where(
-                               activities: {
-                                 user_id: user_ids,
-                                 status: "eligible"
-                               }
-                             )
-                             .where(
-                               "activities.started_at >= ? AND activities.ended_at <= ?",
-                               @challenge.starts_at,
-                               @challenge.ends_at
-                             )
-                             .group("activities.user_id")
-                             .sum(:points)
-                         end
-
-        entries = participations.map do |participation|
-          {
-            user_id: participation.user.id,
-            name: participation.user.name,
-            points: points_by_user.fetch(participation.user_id, 0)
-          }
-        end
-
-        entries.sort_by! { |entry| [-entry[:points], entry[:name].downcase] }
-
-        # Ties share a rank (1, 1, 3), like a race with a dead heat.
-        previous_points = nil
-        current_rank = 0
-
-        entries.each_with_index do |entry, index|
-          if entry[:points] != previous_points
-            current_rank = index + 1
-            previous_points = entry[:points]
-          end
-
-          entry[:rank] = current_rank
-        end
-
         render json: {
           challenge_id: @challenge.id,
           challenge_name: @challenge.name,
           scoring_rule_version: @challenge.scoring_rule_version.version_number,
-          leaderboard: entries
+          leaderboard: ChallengeLeaderboard.call(challenge: @challenge)
         }, status: :ok
       end
 
@@ -340,10 +315,28 @@ module Api
       end
 
       def challenge_params
-        params.require(:challenge).permit(:name, :description, :starts_at, :ends_at, :challenge_type, :team_goal_points)
+        params.require(:challenge).permit(
+          :name, :description, :starts_at, :ends_at, :challenge_type,
+          :team_goal_points, :team_scoring_method,
+          :registration_deadline, :max_participants
+        )
       end
 
-      def challenge_json(challenge)
+      # One query for ALL the headcounts, instead of one query per challenge.
+      def participant_counts_for(challenges)
+        ChallengeParticipation.where(challenge_id: challenges.map(&:id))
+                              .group(:challenge_id)
+                              .count
+      end
+
+      def challenge_json(challenge, counts = nil)
+        participant_count =
+          if counts
+            counts.fetch(challenge.id, 0)
+          else
+            challenge.challenge_participations.count
+          end
+
         {
           id: challenge.id,
           name: challenge.name,
@@ -352,6 +345,14 @@ module Api
           ends_at: challenge.ends_at.iso8601,
           status: challenge.status,
           challenge_type: challenge.challenge_type,
+          team_goal_points: challenge.team_goal_points,
+          team_scoring_method: challenge.team_scoring_method,
+          registration_deadline: challenge.registration_deadline&.iso8601,
+          registration_closes_at: challenge.registration_closes_at.iso8601,
+          max_participants: challenge.max_participants,
+          participant_count: participant_count,
+          # nil when there is no limit
+          spots_left: challenge.max_participants && [challenge.max_participants - participant_count, 0].max,
           scoring_rule_version: challenge.scoring_rule_version.version_number,
           company_id: challenge.company_id,
           finalized_at: challenge.finalized_at&.iso8601,

@@ -14,6 +14,10 @@ class ChallengeLifecycleService
   # can be locked automatically. Admins can also finalise earlier by hand.
   FINALIZATION_GRACE = 48.hours
 
+  # Safety net: if an admin never dealt the teams, the timer deals them at
+  # the start, about this many people per team (never fewer than 2 teams).
+  DEFAULT_TEAM_SIZE = 5
+
   def self.call(now: Time.current)
     new(now: now).call
   end
@@ -33,7 +37,10 @@ class ChallengeLifecycleService
   def start_due_challenges
     Challenge.where(status: "published")
              .where("starts_at <= ?", @now)
-             .find_each { |challenge| move(challenge, status: "active") }
+             .find_each do |challenge|
+      deal_teams_if_missing(challenge)
+      move(challenge, status: "active")
+    end
   end
 
   def begin_finalizing_ended_challenges
@@ -51,6 +58,41 @@ class ChallengeLifecycleService
 
       move(challenge, status: "completed", finalized_at: @now)
     end
+  end
+
+  # A team challenge must not start with nobody on a team. If the admin did
+  # not deal teams, do it now. Teams the admin already dealt are never touched.
+  def deal_teams_if_missing(challenge)
+    return unless challenge.team?
+    return if challenge.teams.exists?
+
+    participant_count = challenge.participants.active.count
+
+    if participant_count < TeamFormationService::MIN_TEAMS
+      Rails.logger.warn(
+        "[ChallengeLifecycle] challenge=#{challenge.id} has too few " \
+        "participants (#{participant_count}) to form teams"
+      )
+      return
+    end
+
+    team_count = [
+      (participant_count / DEFAULT_TEAM_SIZE.to_f).ceil,
+      TeamFormationService::MIN_TEAMS
+    ].max
+
+    result = TeamFormationService.call(
+      challenge: challenge,
+      team_count: team_count,
+      allow_started: true
+    )
+
+    return if result[:teams]
+
+    Rails.logger.error(
+      "[ChallengeLifecycle] challenge=#{challenge.id} could not auto-form " \
+      "teams: #{result[:errors].join('; ')}"
+    )
   end
 
   # One broken challenge must not stop the others from moving on.
