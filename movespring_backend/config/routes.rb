@@ -33,7 +33,7 @@ Rails.application.routes.draw do
       get "challenges/:id/leaderboard", to: "challenges#leaderboard"
 
       resources :chat_rooms, only: [] do
-        resources :messages, only: [:index]
+        resources :messages, only: [:index, :create]
       end
     end
   end

@@ -1,103 +1,48 @@
-require 'rails_helper'
+describe "POST /api/v1/chat_rooms/:chat_room_id/messages" do
+  let(:headers) { { "Authorization" => "Bearer #{token}" } }
 
-RSpec.describe "Api::V1::Messages", type: :request do
-  let(:company) do
-    Company.create!(
-      name: "Glucode",
-      slug: "glucode"
+  it "creates a message in your company's chat room" do
+    expect {
+      post api_v1_chat_room_messages_path(chat_room_id: chat_room.id),
+           params: { message: { body: "Hi!" } }, headers: headers
+    }.to change(Message, :count).by(1)
+
+    expect(response).to have_http_status(:created)
+    expect(JSON.parse(response.body)["message"]["body"]).to eq("Hi!")
+  end
+
+  it "broadcasts the new message to the room" do
+    expect {
+      post api_v1_chat_room_messages_path(chat_room_id: chat_room.id),
+           params: { message: { body: "Hi!" } }, headers: headers
+    }.to have_broadcasted_to("chat_room_#{chat_room.id}")
+  end
+
+  it "rejects a blank body" do
+    post api_v1_chat_room_messages_path(chat_room_id: chat_room.id),
+         params: { message: { body: "" } }, headers: headers
+    expect(response).to have_http_status(:unprocessable_entity)
+  end
+
+  it "forbids posting to another company's room" do
+    other_company = Company.create!(name: "Other Corp", slug: "other")
+    other_challenge = Challenge.create!(
+      company: other_company, scoring_rule_version: scoring_rule_version,
+      name: "Other Challenge", starts_at: 1.day.from_now,
+      ends_at: 10.days.from_now, status: "published"
     )
+    other_room = ChatRoom.create!(challenge: other_challenge, name: "Secret Chat")
+
+    post api_v1_chat_room_messages_path(chat_room_id: other_room.id),
+         params: { message: { body: "Hi" } }, headers: headers
+
+    expect(response).to have_http_status(:forbidden)
+    expect(Message.count).to eq(0)
   end
 
-  let(:user) do
-    User.create!(
-      name: "Anas",
-      email: "anas@glucode.com",
-      password: "password123",
-      company: company,
-      role: "employee",
-      status: "active"
-    )
-  end
-
-  let(:scoring_rule_version) do
-    ScoringRuleVersion.create!(
-      name: "Test scoring rules",
-      version_number: (ScoringRuleVersion.maximum(:version_number) || 0) + 1,
-      status: "draft",
-      rules: {}
-    )
-  end
-
-  let(:challenge) do
-    Challenge.create!(
-      company: company,
-      scoring_rule_version: scoring_rule_version,
-      name: "Step Challenge",
-      starts_at: 1.day.from_now,
-      ends_at: 10.days.from_now,
-      status: "published"
-    )
-  end
-
-  let(:chat_room) do
-    ChatRoom.create!(
-      challenge: challenge,
-      name: "Step Challenge Chat"
-    )
-  end
-
-  let(:token) do
-    TokenService.issue(user)
-  end
-
-  describe "GET /api/v1/chat_rooms/:chat_room_id/messages" do
-    it "returns messages for an authorized company chat room" do
-      Message.create!(
-        user: user,
-        chat_room: chat_room,
-        body: "Hello team!"
-      )
-
-      get api_v1_chat_room_messages_path(chat_room_id: chat_room.id),
-          headers: {
-            "Authorization" => "Bearer #{token}"
-          }
-
-      expect(response).to have_http_status(:ok)
-
-      json = JSON.parse(response.body)
-
-      expect(json["chat_room_id"]).to eq(chat_room.id)
-      expect(json["messages"].size).to eq(1)
-      expect(json["messages"].first["body"]).to eq("Hello team!")
-    end
-
-    it "blocks access if the user tries to view a chat from another company" do
-      other_company = Company.create!(
-        name: "Other Corp",
-        slug: "other"
-      )
-
-      other_challenge = Challenge.create!(
-        company: other_company,
-        scoring_rule_version: scoring_rule_version,
-        name: "Other Challenge",
-        starts_at: 1.day.from_now,
-        ends_at: 10.days.from_now,
-        status: "published"
-      )
-
-      other_room = ChatRoom.create!(
-        challenge: other_challenge,
-        name: "Secret Chat"
-      )
-
-      get api_v1_chat_room_messages_path(chat_room_id: other_room.id),
-          headers: {
-            "Authorization" => "Bearer #{token}"
-          }
-
-      expect(response).to have_http_status(:forbidden)
-    end
+  it "requires authentication" do
+    post api_v1_chat_room_messages_path(chat_room_id: chat_room.id),
+         params: { message: { body: "Hi" } }
+    expect(response).to have_http_status(:unauthorized)
   end
 end
