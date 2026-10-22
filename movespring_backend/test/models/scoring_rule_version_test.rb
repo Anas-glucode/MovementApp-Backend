@@ -60,7 +60,90 @@ class ScoringRuleVersionTest < ActiveSupport::TestCase
     assert_includes version.errors[:rules],
                     "must include positive baseline, low, moderate, and high intensity multipliers"
     assert_includes version.errors[:rules],
-                    "must include valid intensity bands with low_max below moderate_max and moderate_max between 2 and 9"
+                    "intensity_bands needs whole numbers: 1 <= low_max < moderate_max < 10"
+  end
+
+  test "requires complete rules and a publication timestamp for retired versions" do
+    version = ScoringRuleVersion.new(
+      name: "Incomplete Retired Rules",
+      version_number: 99,
+      status: "retired",
+      rules: {}
+    )
+
+    assert_not version.valid?
+    assert_includes version.errors[:published_at],
+                    "must be set for a published scoring version"
+    assert_includes version.errors[:rules],
+                    "must include a positive sport rate for every supported activity type"
+    assert_includes version.errors[:rules],
+                    "must include positive baseline, low, moderate, and high intensity multipliers"
+    assert_includes version.errors[:rules], "intensity_bands must be an object"
+  end
+
+  test "rejects zero-valued sport rates" do
+    rules = scoring_rule_versions(:one).rules.deep_dup
+    rules["sport_rates"]["walking"] = 0
+    version = ScoringRuleVersion.new(
+      name: "Zero-Rate Rules",
+      version_number: 99,
+      status: "published",
+      published_at: Time.current,
+      rules: rules
+    )
+
+    assert_not version.valid?
+    assert_includes version.errors[:rules],
+                    "must include a positive sport rate for every supported activity type"
+  end
+
+  test "rejects negative intensity multipliers" do
+    rules = scoring_rule_versions(:one).rules.deep_dup
+    rules["intensity_multipliers"]["baseline"] = -0.1
+    version = ScoringRuleVersion.new(
+      name: "Negative Multiplier Rules",
+      version_number: 99,
+      status: "published",
+      published_at: Time.current,
+      rules: rules
+    )
+
+    assert_not version.valid?
+    assert_includes version.errors[:rules],
+                    "must include positive baseline, low, moderate, and high intensity multipliers"
+  end
+
+  test "allows a zero manual multiplier" do
+    rules = scoring_rule_versions(:one).rules.deep_dup
+    rules["manual_multiplier"] = 0
+    version = ScoringRuleVersion.new(
+      name: "Zero Manual Multiplier Rules",
+      version_number: 99,
+      status: "published",
+      published_at: Time.current,
+      rules: rules
+    )
+
+    assert version.valid?, version.errors.full_messages.inspect
+  end
+
+  test "rejects invalid optional scoring settings" do
+    rules = scoring_rule_versions(:one).rules.deep_dup
+    rules["daily_point_cap"] = 0
+    rules["manual_multiplier"] = 1.1
+    version = ScoringRuleVersion.new(
+      name: "Invalid Optional Settings",
+      version_number: 99,
+      status: "published",
+      published_at: Time.current,
+      rules: rules
+    )
+
+    assert_not version.valid?
+    assert_includes version.errors[:rules],
+                    "daily_point_cap must be a whole number > 0"
+    assert_includes version.errors[:rules],
+                    "manual_multiplier must be between 0 and 1"
   end
 
   test "prevents editing rules after publication" do
@@ -72,8 +155,8 @@ class ScoringRuleVersionTest < ActiveSupport::TestCase
     )
 
     assert_not version.save
-    assert_includes version.errors[:base],
-                    "Published scoring rules cannot be edited; create a new version instead"
+    assert_includes version.errors[:rules],
+                    "cannot be changed after publishing; create a new version instead"
   end
 
   test "allows retiring a published version without changing its rules" do

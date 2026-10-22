@@ -1,5 +1,9 @@
 require "test_helper"
 
+# Lines marked "CHANGED" are the ones updated for the new rules:
+#   * manual entries now need an effort score (reported_intensity)
+#   * activities that end in the future are refused, not held for review
+#   * clean imported workouts are eligible and scored straight away
 class ActivityCreationServiceTest < ActiveSupport::TestCase
   test "accepts a normal manual activity as eligible and awards points once" do
     user = users(:one)
@@ -12,7 +16,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
         activity_type: "walking",
         started_at: started_at,
         ended_at: started_at + 30.minutes,
-        distance_meters: 2000
+        distance_meters: 2000,
+        reported_intensity: 5 # CHANGED: effort score is now required
       }
     )
 
@@ -50,7 +55,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: started_at,
-        ended_at: started_at + 30.minutes
+        ended_at: started_at + 30.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
 
@@ -63,7 +69,9 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
     assert_nil activity.activity_point_award
   end
 
-  test "keeps an imported Health Connect workout pending without awarding points" do
+  # CHANGED (name and expectations): a clean import no longer waits as
+  # "pending". It passes the plausibility checks, so it is eligible and scored.
+  test "accepts a clean imported Health Connect workout as eligible and awards points" do
     user = users(:one)
     started_at = 2.hours.ago
 
@@ -84,8 +92,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
 
     activity = result[:activity]
 
-    assert_equal "pending", activity.status
-    assert_nil activity.activity_point_award
+    assert_equal "eligible", activity.status
+    assert activity.activity_point_award.present?
   end
 
   test "rejects an imported workout with a mismatched duration" do
@@ -123,7 +131,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
         attributes: {
           activity_type: "walking",
           started_at: 1.hour.ago,
-          ended_at: 30.minutes.ago
+          ended_at: 30.minutes.ago,
+          reported_intensity: 5 # CHANGED
         }
       )
 
@@ -143,7 +152,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: started_at,
-        ended_at: started_at + 30.minutes
+        ended_at: started_at + 30.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
     assert first[:activity].present?, first[:errors].inspect
@@ -156,7 +166,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: started_at + 10.minutes,
-        ended_at: started_at + 40.minutes
+        ended_at: started_at + 40.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
     assert second[:activity].present?, second[:errors].inspect
@@ -177,7 +188,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: started_at,
-        ended_at: started_at + 30.minutes
+        ended_at: started_at + 30.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
     assert first[:activity].present?, first[:errors].inspect
@@ -189,7 +201,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "running",
         started_at: started_at + 30.minutes,
-        ended_at: started_at + 60.minutes
+        ended_at: started_at + 60.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
     assert second[:activity].present?, second[:errors].inspect
@@ -208,7 +221,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: started_at,
-        ended_at: started_at + 30.minutes
+        ended_at: started_at + 30.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
     assert first[:activity].present?, first[:errors].inspect
@@ -222,7 +236,8 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: started_at,
-        ended_at: started_at + 30.minutes
+        ended_at: started_at + 30.minutes,
+        reported_intensity: 5 # CHANGED
       }
     )
     assert second[:activity].present?, second[:errors].inspect
@@ -230,7 +245,9 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
     assert_equal "eligible", second[:activity].status
   end
 
-  test "holds a manual activity that ends in the future for review" do
+  # CHANGED (name and expectations): an activity that ends in the future is
+  # now refused at the door. Nobody earns points for time that hasn't happened.
+  test "refuses a manual activity that ends in the future" do
     user = users(:one)
 
     # Starts a minute ago but claims to run for another two hours
@@ -240,13 +257,13 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
       attributes: {
         activity_type: "walking",
         started_at: 1.minute.ago,
-        ended_at: 2.hours.from_now
+        ended_at: 2.hours.from_now,
+        reported_intensity: 5
       }
     )
-    assert result[:activity].present?, result[:errors].inspect
 
-    assert_equal "under_review", result[:activity].status
-    assert_nil result[:activity].activity_point_award
+    assert_nil result[:activity]
+    assert_includes result[:errors], "Activity cannot be in the future"
   end
 
   test "ignores a client-supplied heart rate and intensity source on manual entries" do
@@ -276,7 +293,10 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
     assert_equal 7, activity.reported_intensity
   end
 
-  test "a manual entry with no effort score has no intensity source" do
+  # CHANGED (name and expectations): a missing effort score used to mean
+  # "no intensity source". Now it is an error, which closes the loophole where
+  # leaving it blank paid more than an honest "low effort".
+  test "refuses a manual entry with no effort score" do
     user = users(:one)
     started_at = 7.hours.ago
 
@@ -287,12 +307,11 @@ class ActivityCreationServiceTest < ActiveSupport::TestCase
         activity_type: "walking",
         started_at: started_at,
         ended_at: started_at + 30.minutes,
-        intensity_source: "heart_rate"
+        intensity_source: "heart_rate" # the client's claim is ignored anyway
       }
     )
-    assert result[:activity].present?, result[:errors].inspect
 
-    # Even though the client sent "heart_rate", the server ignores it
-    assert_nil result[:activity].intensity_source
+    assert_nil result[:activity]
+    assert_includes result[:errors], "Effort level (1-10) is required"
   end
 end

@@ -1,12 +1,15 @@
+# Turns one eligible activity into challenge points, for each challenge the
+# person has joined.
 class ChallengeActivityScoringService
   class ScoringError < StandardError; end
 
-  ALLOWED_CHALLENGE_STATUSES = %w[
-    published
-    active
-    completed
-  ].freeze
+  # CHANGED: "completed" is gone. Once a challenge is completed its scores
+  # are meant to be final, so it must not take new points. A challenge only
+  # accepts points while it is open for sign-up (published) or running (active).
+    ALLOWED_CHALLENGE_STATUSES = %w[published active finalizing].freeze
 
+  # A challenge keeps using the rules version it was created with, even after
+  # that version is retired, so "retired" is still fine here.
   ALLOWED_SCORING_STATUSES = %w[
     published
     retired
@@ -16,26 +19,44 @@ class ChallengeActivityScoringService
     new(challenge: challenge, activity: activity).call
   end
 
+  # Scores the activity into EVERY challenge the person has joined.
+  #
+  # CHANGED: each challenge now runs in its own "savepoint", like a separate
+  # tray in the kitchen. If one tray is dropped (a broken rules version, say),
+  # only that tray is thrown away. The activity, the personal points and the
+  # other challenges carry on. Before, one bad challenge cancelled the whole
+  # activity, so the employee couldn't log anything at all.
   def self.call_for_activity(activity:)
-  return [] unless activity&.persisted? && activity.status == "eligible"
+    return [] unless activity&.persisted? && activity.status == "eligible"
 
-  activity.user
-          .challenge_participations
-          .includes(challenge: :scoring_rule_version)
-          .filter_map do |participation|
-    challenge = participation.challenge
+    activity.user
+            .challenge_participations
+            .includes(challenge: :scoring_rule_version)
+            .filter_map do |participation|
+      challenge = participation.challenge
 
-    next unless ALLOWED_CHALLENGE_STATUSES.include?(challenge.status)
+      next unless ALLOWED_CHALLENGE_STATUSES.include?(challenge.status)
 
-    next unless activity.started_at >= challenge.starts_at &&
-                activity.ended_at <= challenge.ends_at
+      next unless activity.started_at >= challenge.starts_at &&
+                  activity.ended_at <= challenge.ends_at
 
-    call(
-      challenge: challenge,
-      activity: activity
-    )
+      begin
+        # requires_new: true is what makes this a savepoint instead of just
+        # joining the outer transaction. A failure undoes ONLY this challenge.
+        Activity.transaction(requires_new: true) do
+          call(challenge: challenge, activity: activity)
+        end
+      rescue ScoringError => e
+        # Don't hide it: log it so missing challenge points can be traced.
+        Rails.logger.error(
+          "[ChallengeScoring] challenge=#{challenge.id} " \
+          "activity=#{activity.id} failed: #{e.message}"
+        )
+
+        nil # filter_map drops nil, so the other challenges still score
+      end
+    end
   end
-end
 
   def initialize(challenge:, activity:)
     @challenge = challenge

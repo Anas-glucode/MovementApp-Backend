@@ -54,6 +54,11 @@ class ActivityReviewService
           raise ReviewError, "This activity is not awaiting review"
         end
 
+        if @activity.activity_point_award.present? ||
+           ChallengeActivityAward.exists?(activity_id: @activity.id)
+          raise ReviewError, "This activity already has points and cannot be reviewed"
+        end
+
         scoring_rule_version = nil
 
         if @decision == "approved"
