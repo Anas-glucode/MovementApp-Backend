@@ -1,4 +1,3 @@
-
 class Activity < ApplicationRecord
   belongs_to :user
   has_one :activity_point_award, dependent: :destroy
@@ -9,7 +8,21 @@ class Activity < ApplicationRecord
 
   STATUSES = %w[pending eligible under_review rejected].freeze
 
-  validates :activity_type, presence: true
+  # The ONE list of sports the app understands. The service, the scoring-rule
+  # validation and the database check constraint all use this same list, so
+  # adding a sport means changing it here (plus a new migration for the
+  # constraint) and nowhere else.
+  TYPES = %w[
+    walking
+    running
+    cycling
+    swimming
+    football
+    strength_training
+    golf
+  ].freeze
+
+  validates :activity_type, presence: true, inclusion: { in: TYPES }
   validates :source, presence: true, inclusion: { in: SOURCES }
   validates :status, presence: true, inclusion: { in: STATUSES }
 
@@ -51,6 +64,18 @@ class Activity < ApplicationRecord
             allow_blank: true
 
   validate :ended_after_started
+  validate :time_zone_must_be_recognised
+
+  def manual?
+    source == "manual"
+  end
+
+  # An honest label for the app to show next to the activity.
+  # We can never PROVE a phone really read HealthKit (a modified app could
+  # lie), so we say "device_reported", not "verified".
+  def verification
+    manual? ? "self_reported" : "device_reported"
+  end
 
   private
 
@@ -59,5 +84,14 @@ class Activity < ApplicationRecord
     return if ended_at > started_at
 
     errors.add(:ended_at, "must be after the activity start time")
+  end
+
+  # A made-up time zone used to be silently treated as UTC. Now it is an error,
+  # because the time zone decides which "day" the daily point cap uses.
+  def time_zone_must_be_recognised
+    return if time_zone.blank?
+    return if ActiveSupport::TimeZone[time_zone].present?
+
+    errors.add(:time_zone, "is not a recognised time zone")
   end
 end

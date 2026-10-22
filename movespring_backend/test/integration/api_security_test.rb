@@ -842,7 +842,8 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
              activity_type: "walking",
              started_at: started_at.iso8601,
              ended_at: (started_at + 30.minutes).iso8601,
-             distance_meters: 2000
+             distance_meters: 2000,
+             reported_intensity: 5
            }
          },
          headers: auth_headers(@employee),
@@ -873,7 +874,8 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
              points: 999999,
              started_at: started_at.iso8601,
              ended_at: (started_at + 30.minutes).iso8601,
-             distance_meters: 2000
+             distance_meters: 2000,
+             reported_intensity: 5
            }
          },
          headers: auth_headers(@employee),

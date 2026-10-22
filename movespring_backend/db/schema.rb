@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_073851) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -39,13 +39,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
     t.index ["user_id", "status"], name: "index_activities_on_user_and_status"
     t.index ["user_id"], name: "index_activities_on_user_id"
     t.check_constraint "active_calories IS NULL OR active_calories >= 0::numeric", name: "activities_nonnegative_calories"
+    t.check_constraint "activity_type::text = ANY (ARRAY['walking'::character varying::text, 'running'::character varying::text, 'cycling'::character varying::text, 'swimming'::character varying::text, 'football'::character varying::text, 'strength_training'::character varying::text, 'golf'::character varying::text])", name: "activities_valid_activity_type"
     t.check_constraint "average_heart_rate IS NULL OR average_heart_rate >= 1 AND average_heart_rate <= 250", name: "activities_valid_heart_rate"
     t.check_constraint "distance_meters IS NULL OR distance_meters >= 0::numeric", name: "activities_nonnegative_distance"
     t.check_constraint "duration_seconds > 0", name: "activities_positive_duration"
     t.check_constraint "ended_at > started_at", name: "activities_valid_time_range"
     t.check_constraint "reported_intensity IS NULL OR reported_intensity >= 1 AND reported_intensity <= 10", name: "activities_valid_reported_intensity"
-    t.check_constraint "source::text = ANY (ARRAY['healthkit'::character varying, 'health_connect'::character varying, 'manual'::character varying]::text[])", name: "activities_valid_source"
-    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'eligible'::character varying, 'under_review'::character varying, 'rejected'::character varying]::text[])", name: "activities_valid_status"
+    t.check_constraint "source::text = ANY (ARRAY['healthkit'::character varying::text, 'health_connect'::character varying::text, 'manual'::character varying::text])", name: "activities_valid_source"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'eligible'::character varying::text, 'under_review'::character varying::text, 'rejected'::character varying::text])", name: "activities_valid_status"
     t.check_constraint "steps IS NULL OR steps >= 0", name: "activities_nonnegative_steps"
   end
 
@@ -71,7 +72,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
     t.index ["activity_id"], name: "index_activity_reviews_on_activity_id", unique: true
     t.index ["reviewer_id"], name: "index_activity_reviews_on_reviewer_id"
     t.check_constraint "decision::text <> 'rejected'::text OR length(TRIM(BOTH FROM reason)) > 0", name: "activity_reviews_rejection_requires_reason"
-    t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
+    t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying::text, 'rejected'::character varying::text])", name: "activity_reviews_valid_decision"
   end
 
   create_table "badges", force: :cascade do |t|
@@ -124,13 +125,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
     t.datetime "updated_at", null: false
     t.string "challenge_type", default: "individual", null: false
     t.integer "team_goal_points"
+    t.datetime "finalized_at"
     t.index ["company_id", "starts_at"], name: "index_challenges_on_company_id_and_starts_at"
     t.index ["company_id", "status"], name: "index_challenges_on_company_id_and_status"
     t.index ["company_id"], name: "index_challenges_on_company_id"
     t.index ["scoring_rule_version_id"], name: "index_challenges_on_scoring_rule_version_id"
-    t.check_constraint "challenge_type::text = ANY (ARRAY['individual'::character varying, 'team'::character varying]::text[])", name: "challenges_valid_type"
+    t.check_constraint "challenge_type::text = ANY (ARRAY['individual'::character varying::text, 'team'::character varying::text])", name: "challenges_valid_type"
     t.check_constraint "ends_at > starts_at", name: "challenges_valid_dates"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'active'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "challenges_valid_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'active'::character varying, 'finalizing'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "challenges_valid_status"
     t.check_constraint "team_goal_points IS NULL OR team_goal_points > 0", name: "challenges_positive_team_goal"
   end
 
@@ -148,6 +150,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
     t.string "status", default: "active", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "time_zone", default: "UTC", null: false
     t.index ["slug"], name: "index_companies_on_slug", unique: true
   end
 
@@ -201,7 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_084303) do
     t.datetime "updated_at", null: false
     t.index ["version_number"], name: "index_scoring_rule_versions_on_version_number", unique: true
     t.check_constraint "jsonb_typeof(rules) = 'object'::text", name: "scoring_rule_versions_rules_must_be_object"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'retired'::character varying]::text[])", name: "scoring_rule_versions_valid_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'retired'::character varying::text])", name: "scoring_rule_versions_valid_status"
     t.check_constraint "version_number > 0", name: "scoring_rule_versions_positive_version"
   end
 
