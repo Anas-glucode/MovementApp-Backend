@@ -50,7 +50,7 @@ post   "invitations/:id/resend", to: "invitations#resend"
       
 
       resources :chat_rooms, only: [] do
-        resources :messages, only: [:index]
+        resources :messages, only: [:index, :create, :destroy]
       end
     end
   end
