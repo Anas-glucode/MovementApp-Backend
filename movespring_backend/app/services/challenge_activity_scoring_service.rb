@@ -3,10 +3,14 @@
 class ChallengeActivityScoringService
   class ScoringError < StandardError; end
 
-  # CHANGED: "completed" is gone. Once a challenge is completed its scores
-  # are meant to be final, so it must not take new points. A challenge only
-  # accepts points while it is open for sign-up (published) or running (active).
-    ALLOWED_CHALLENGE_STATUSES = %w[published active finalizing].freeze
+  # A challenge accepts points while it is open for sign-up (published),
+  # running (active) or in its cooling-off period after the end (finalizing).
+  # Once it is completed its results are final and it takes nothing more.
+  ALLOWED_CHALLENGE_STATUSES = %w[
+    published
+    active
+    finalizing
+  ].freeze
 
   # A challenge keeps using the rules version it was created with, even after
   # that version is retired, so "retired" is still fine here.
@@ -21,11 +25,10 @@ class ChallengeActivityScoringService
 
   # Scores the activity into EVERY challenge the person has joined.
   #
-  # CHANGED: each challenge now runs in its own "savepoint", like a separate
-  # tray in the kitchen. If one tray is dropped (a broken rules version, say),
-  # only that tray is thrown away. The activity, the personal points and the
-  # other challenges carry on. Before, one bad challenge cancelled the whole
-  # activity, so the employee couldn't log anything at all.
+  # Each challenge runs in its own "savepoint", like a separate tray in the
+  # kitchen. If one tray is dropped (a broken rules version, say), only that
+  # tray is thrown away. The activity, the personal points and the other
+  # challenges carry on.
   def self.call_for_activity(activity:)
     return [] unless activity&.persisted? && activity.status == "eligible"
 
@@ -37,8 +40,10 @@ class ChallengeActivityScoringService
 
       next unless ALLOWED_CHALLENGE_STATUSES.include?(challenge.status)
 
-      next unless activity.started_at >= challenge.starts_at &&
-                  activity.ended_at <= challenge.ends_at
+      # CHANGED: an activity counts if it STARTED inside the challenge.
+      # Before, it had to start AND end inside, so a run crossing the start
+      # or finish line counted for nothing.
+      next unless challenge.window.cover?(activity.started_at)
 
       begin
         # requires_new: true is what makes this a savepoint instead of just
@@ -135,9 +140,8 @@ class ChallengeActivityScoringService
       raise ScoringError, "Activity owner must participate in the challenge"
     end
 
-    unless @activity.started_at >= @challenge.starts_at &&
-           @activity.ended_at <= @challenge.ends_at
-      raise ScoringError, "Activity must fall within the challenge dates"
+    unless @challenge.window.cover?(@activity.started_at)
+      raise ScoringError, "Activity must start within the challenge dates"
     end
 
     scoring_version = @challenge.scoring_rule_version

@@ -93,6 +93,14 @@ class ChallengeLeaderboardsTest < ActionDispatch::IntegrationTest
 
     create_scored_activity(@employee, challenge, points: 100)
 
+    crossing_activity = create_activity(
+      @employee,
+      started_at: challenge.ends_at - 1.hour,
+      ended_at: challenge.ends_at + 1.hour,
+      status: "eligible"
+    )
+    create_award(crossing_activity, challenge: challenge, points: 300)
+
     before_activity = create_activity(
       @employee,
       started_at: challenge.starts_at - 2.hours,
@@ -126,7 +134,27 @@ class ChallengeLeaderboardsTest < ActionDispatch::IntegrationTest
     leaderboard = response.parsed_body.fetch("leaderboard")
 
     assert_equal 1, leaderboard.length
-    assert_equal 100, leaderboard.first["points"]
+    assert_equal 400, leaderboard.first["points"]
+  end
+
+  test "leaderboard excludes deactivated participants" do
+    challenge = create_challenge(@company)
+    join_challenge(challenge, @employee)
+    join_challenge(challenge, @second_employee)
+    activate_challenge(challenge)
+    @second_employee.update!(status: "inactive")
+
+    create_scored_activity(@employee, challenge, points: 100)
+    create_scored_activity(@second_employee, challenge, points: 500)
+
+    get "/api/v1/challenges/#{challenge.id}/leaderboard",
+        headers: auth_headers(@employee),
+        as: :json
+
+    assert_response :ok
+    leaderboard = response.parsed_body.fetch("leaderboard")
+    assert_equal [@employee.id], leaderboard.map { |entry| entry["user_id"] }
+    assert_equal [100], leaderboard.map { |entry| entry["points"] }
   end
 
   test "leaderboard excludes awards from a different scoring-rule version" do

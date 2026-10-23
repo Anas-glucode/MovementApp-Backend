@@ -8,43 +8,14 @@ module Api
 
       # GET /api/v1/challenges/:challenge_id/teams  (the team leaderboard)
       def index
+        # CHANGED: uses the same list as the challenges controller, so the
+        # two can never disagree again. The old hard-coded list was missing
+        # "finalizing", which hid the leaderboard from employees after a
+        # challenge ended.
         unless current_user.company_admin? ||
-               %w[published active completed].include?(@challenge.status)
+               ChallengesController::VISIBLE_TO_EMPLOYEES.include?(@challenge.status)
           return render json: { error: "Challenge not found in your company" },
                         status: :not_found
-        end
-
-        teams = @challenge.teams.includes(:members).order(:id).to_a
-        points_by_team = TeamPoints.call(challenge: @challenge)
-
-entries = teams.map do |team|
-  member_count = team.members.size
-  points = points_by_team.fetch(team.id, 0)
-
-  {
-    team_id: team.id,
-    name: team.name,
-    member_count: member_count,
-    points: points,
-    average_points: member_count.zero? ? 0.0 : (points.to_f / member_count).round(1),
-    # nil when the challenge has no goal
-    goal: TeamGoalProgress.call(challenge: @challenge, points: points)
-  }
-end
-
-        # Highest points first; ties broken by name so the order is stable
-        entries.sort_by! { |e| [-e[:points], e[:name].downcase] }
-
-        # Tied teams share a rank (1, 1, 3), the same way your
-        # individual leaderboard does it
-        previous_points = nil
-        current_rank = 0
-        entries.each_with_index do |entry, index|
-          if entry[:points] != previous_points
-            current_rank = index + 1
-            previous_points = entry[:points]
-          end
-          entry[:rank] = current_rank
         end
 
         render json: {
@@ -52,7 +23,8 @@ end
           challenge_name: @challenge.name,
           challenge_type: @challenge.challenge_type,
           team_goal_points: @challenge.team_goal_points,
-          leaderboard: entries
+          scoring_method: @challenge.team_scoring_method,
+          leaderboard: TeamLeaderboard.call(challenge: @challenge)
         }, status: :ok
       end
 
@@ -77,21 +49,26 @@ end
 
       # GET /api/v1/challenges/:challenge_id/my_team
       def mine
-       points = TeamPoints.call(challenge: @challenge).fetch(membership.team_id, 0)
+        membership = TeamMembership.includes(:team)
+                                   .find_by(challenge_id: @challenge.id,
+                                            user_id: current_user.id)
 
-render json: {
-  team: team_json(membership.team).merge(
-    points: points,
-    goal: TeamGoalProgress.call(challenge: @challenge, points: points)
-  )
-}, status: :ok
+        unless membership
+          return render json: { error: "You are not on a team in this challenge" },
+                        status: :not_found
+        end
+
+        points = TeamPoints.call(challenge: @challenge).fetch(membership.team_id, 0)
+
+        render json: {
+          team: team_json(membership.team).merge(
+            points: points,
+            goal: TeamGoalProgress.call(challenge: @challenge, points: points)
+          )
+        }, status: :ok
       end
 
       private
-
-      # Adds up each person's award points for this challenge, grouped by team.
-      # Same rules as the individual leaderboard: eligible activities that
-      # sit fully inside the challenge dates.
 
       def team_json(team)
         {

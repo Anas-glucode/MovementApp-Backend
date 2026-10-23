@@ -6,24 +6,48 @@
 class TeamFormationService
   MIN_TEAMS = 2
 
-  def self.call(challenge:, team_count: nil, team_size: nil, reshuffle: false)
+  # allow_started: only the challenge timer uses this. It lets the system deal
+  # teams at the moment a challenge starts, if the admin forgot to.
+  def self.call(challenge:, team_count: nil, team_size: nil, reshuffle: false, allow_started: false)
     new(challenge: challenge, team_count: team_count,
-        team_size: team_size, reshuffle: reshuffle).call
+        team_size: team_size, reshuffle: reshuffle,
+        allow_started: allow_started).call
   end
 
-  def initialize(challenge:, team_count:, team_size:, reshuffle:)
+  def initialize(challenge:, team_count:, team_size:, reshuffle:, allow_started:)
     @challenge = challenge
     # nil.to_i is 0 and "3".to_i is 3, so params from JSON or text both work
     @team_count = team_count.to_i
     @team_size = team_size.to_i
     @reshuffle = ActiveModel::Type::Boolean.new.cast(reshuffle) == true
+    @allow_started = allow_started == true
   end
 
   def call
     return { errors: ["This is not a team challenge"] } unless @challenge.team?
 
-    # Teams are formed while sign-ups are done but the challenge hasn't begun
-    unless @challenge.status == "published" && @challenge.starts_at > Time.current
+    result = nil
+
+    # All-or-nothing: if anything fails, no half-built teams are left behind.
+    Challenge.transaction do
+      # CHANGED: lock the challenge FIRST, then look at who has joined.
+      # Before, the list of participants was read before the lock, so
+      # someone joining in that gap could be missed and end up with no team.
+      # lock! also refreshes the challenge, so its status is up to date.
+      @challenge.lock!
+
+      result = deal_teams
+    end
+
+    result
+  rescue ActiveRecord::RecordInvalid => e
+    { errors: e.record.errors.full_messages }
+  end
+
+  private
+
+  def deal_teams
+    unless open_for_forming?
       return {
         errors: ["Teams can only be formed while the challenge is published and has not started"]
       }
@@ -48,27 +72,26 @@ class TeamFormationService
       return { errors: ["Teams already exist. Send reshuffle: true to rebuild them"] }
     end
 
-    teams = []
+    @challenge.teams.destroy_all if @reshuffle
 
-    # All-or-nothing: if anything fails, no half-built teams are left behind
-    Challenge.transaction do
-      @challenge.lock!
-      @challenge.teams.destroy_all if @reshuffle
+    teams = Array.new(count) { |i| @challenge.teams.create!(name: "Team #{i + 1}") }
 
-      teams = Array.new(count) { |i| @challenge.teams.create!(name: "Team #{i + 1}") }
-
-      participants.shuffle.each_with_index do |user, i|
-        # i % count walks round and round the teams: 0, 1, 2, 0, 1, 2, ...
-        teams[i % count].team_memberships.create!(user: user, challenge: @challenge)
-      end
+    participants.shuffle.each_with_index do |user, i|
+      # i % count walks round and round the teams: 0, 1, 2, 0, 1, 2, ...
+      teams[i % count].team_memberships.create!(user: user, challenge: @challenge)
     end
 
     { teams: teams }
-  rescue ActiveRecord::RecordInvalid => e
-    { errors: e.record.errors.full_messages }
   end
 
-  private
+  # Admins form teams before the start. The timer is also allowed to do it
+  # for a challenge that has just started and still has no teams.
+  def open_for_forming?
+    return false unless @challenge.status == "published"
+    return true if @allow_started
+
+    @challenge.starts_at > Time.current
+  end
 
   # "team_count: 4" means 4 teams. "team_size: 5" means as many teams as
   # needed for about 5 people each (rounded up).
