@@ -47,6 +47,9 @@ post   "invitations/:id/resend", to: "invitations#resend"
       get  "challenges/:challenge_id/teams",   to: "teams#index"
       post "challenges/:challenge_id/teams",   to: "teams#create"
       get  "challenges/:challenge_id/my_team", to: "teams#mine"
+         post   "badges",     to: "badges#create"
+   patch  "badges/:id", to: "badges#update"
+   delete "badges/:id", to: "badges#destroy"
       
 
       resources :chat_rooms, only: [] do
