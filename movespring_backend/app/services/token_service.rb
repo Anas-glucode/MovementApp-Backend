@@ -5,12 +5,12 @@ class TokenService
     now = Time.current.to_i
 
     payload = {
-      sub: user.id,
-      company_id: user.company_id,
-      role: user.role,
-      iat: now,
-      exp: (Time.current + LIFETIME).to_i
-    }
+  sub: user.id,
+  # Last 10 chars of the bcrypt salt. It changes whenever the password changes
+  pwd: user.password_salt.last(10),
+  iat: now,
+  exp: (Time.current + LIFETIME).to_i
+}
 
     JWT.encode(payload, secret, "HS256")
   end
@@ -22,9 +22,10 @@ class TokenService
     nil
   end
 
-  def self.secret
-    Rails.application.secret_key_base
-  end
+ def self.secret
+  # A key made just for JWTs, derived from the app's master secret
+  Rails.application.key_generator.generate_key("jwt-signing", 32)
+end
 
   private_class_method :secret
 end

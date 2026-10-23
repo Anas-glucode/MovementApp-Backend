@@ -7,15 +7,25 @@ Rails.application.routes.draw do
   
   namespace :api do
     namespace :v1 do
+      post "password_resets", to: "password_resets#create"
+      patch "password_resets", to: "password_resets#update"
       post "registrations", to: "registrations#create"
       post "sessions", to: "sessions#create"
+      post   "sessions/refresh", to: "sessions#refresh"
+delete "sessions/all",     to: "sessions#destroy_all"
+delete "sessions",         to: "sessions#destroy"
       get "me", to: "profiles#show"
       get "activities", to: "activities#index"
       post "activities", to: "activities#create"
       post "activities/:id/review", to: "activity_reviews#create"
+      post "activity_imports", to: "activity_imports#create"
       post "invitations", to: "invitations#create"
       post "invitations/accept", to: "invitations#accept"
+      get    "invitations",            to: "invitations#index"
+delete "invitations/:id",        to: "invitations#destroy"
+post   "invitations/:id/resend", to: "invitations#resend"
       get "employees", to: "employees#index"
+      patch "employees/:id/role", to: "employees#change_role"
       patch "employees/:id", to: "employees#update"
       patch "employees/:id/deactivate", to: "employees#deactivate"
       patch "employees/:id/reactivate", to: "employees#reactivate"
@@ -30,7 +40,13 @@ Rails.application.routes.draw do
       patch "challenges/:id/publish", to: "challenges#publish"
       post "challenges/:id/join", to: "challenges#join"
       get "my_challenges", to: "challenges#mine"
+         patch "challenges/:id/finalize", to: "challenges#finalize"
+   patch "challenges/:id/cancel", to: "challenges#cancel"
       get "challenges/:id/leaderboard", to: "challenges#leaderboard"
+      get  "challenges/:challenge_id/teams",   to: "teams#index"
+      post "challenges/:challenge_id/teams",   to: "teams#create"
+      get  "challenges/:challenge_id/my_team", to: "teams#mine"
+      
 
       resources :chat_rooms, only: [] do
         resources :messages, only: [:index, :create, :destroy]

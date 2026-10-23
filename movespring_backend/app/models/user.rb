@@ -4,6 +4,11 @@ class User < ApplicationRecord
   has_many :challenge_participations, dependent: :destroy
   has_many :joined_challenges, through: :challenge_participations, source: :challenge
   has_many :messages, dependent: :destroy
+  has_many :refresh_tokens, dependent: :destroy
+
+  after_update :revoke_refresh_tokens, if: -> {
+  saved_change_to_password_digest? || (saved_change_to_status? && inactive?)
+}
 
   has_secure_password
 
@@ -17,10 +22,15 @@ class User < ApplicationRecord
                     format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :role, presence: true
   validates :status, presence: true
+  validates :password, length: { minimum: 8 }, if: -> { password.present? }
 
   private
 
   def normalize_email
     self.email = email.to_s.strip.downcase
   end
+
+  def revoke_refresh_tokens
+  refresh_tokens.where(revoked_at: nil).update_all(revoked_at: Time.current)
+end
 end

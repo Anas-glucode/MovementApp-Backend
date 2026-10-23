@@ -22,13 +22,21 @@ class DailyPointCap
   end
 
   # The whole local day this activity belongs to: midnight to midnight in the
-  # activity's own time zone. If the time zone is missing or not recognised,
-  # fall back to UTC. An activity counts toward the day it STARTED.
+  # COMPANY's time zone. An activity counts toward the day it STARTED.
+  #
+  # CHANGED: this used to trust the time zone the phone sent. Someone could
+  # send a different zone on each activity and turn one real day into two
+  # capped days. The company's zone is set by an administrator, so it can't
+  # be played with from the client.
   def self.day_range(activity)
-    zone_name = activity.time_zone.presence
-    zone = (zone_name && ActiveSupport::TimeZone[zone_name]) ||
-           ActiveSupport::TimeZone["UTC"]
+    activity.started_at.in_time_zone(zone_for(activity)).all_day
+  end
 
-    activity.started_at.in_time_zone(zone).all_day
+  # The company's zone, falling back to UTC if it is missing or unrecognised.
+  def self.zone_for(activity)
+    zone_name = activity.user&.company&.time_zone.presence
+
+    (zone_name && ActiveSupport::TimeZone[zone_name]) ||
+      ActiveSupport::TimeZone["UTC"]
   end
 end

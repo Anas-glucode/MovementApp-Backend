@@ -90,4 +90,60 @@ class ActivityReviewServiceTest < ActiveSupport::TestCase
     assert_equal "under_review", activity.reload.status
     assert_equal 0, ActivityReview.where(activity_id: activity.id).count
   end
+
+  test "an activity with a point award cannot be reviewed" do
+    activity = create_waiting_activity(@employee)
+    ActivityPointAward.create!(
+      activity: activity,
+      scoring_rule_version: scoring_rule_versions(:one),
+      points: 10
+    )
+
+    error = assert_raises(ActivityReviewService::ReviewError) do
+      ActivityReviewService.call(
+        activity: activity,
+        reviewer: @admin,
+        decision: "rejected",
+        reason: "Needs correction"
+      )
+    end
+
+    assert_equal "This activity already has points and cannot be reviewed",
+                 error.message
+    assert_equal "under_review", activity.reload.status
+    assert_equal 0, ActivityReview.where(activity_id: activity.id).count
+  end
+
+  test "an activity with a challenge award cannot be reviewed" do
+    activity = create_waiting_activity(@employee)
+    scoring_rules = scoring_rule_versions(:one)
+    challenge = Challenge.create!(
+      company: @company,
+      scoring_rule_version: scoring_rules,
+      name: "Review challenge",
+      starts_at: 1.day.ago,
+      ends_at: 1.day.from_now,
+      status: "active"
+    )
+    ChallengeActivityAward.create!(
+      challenge: challenge,
+      activity: activity,
+      scoring_rule_version: scoring_rules,
+      points: 10
+    )
+
+    error = assert_raises(ActivityReviewService::ReviewError) do
+      ActivityReviewService.call(
+        activity: activity,
+        reviewer: @admin,
+        decision: "rejected",
+        reason: "Needs correction"
+      )
+    end
+
+    assert_equal "This activity already has points and cannot be reviewed",
+                 error.message
+    assert_equal "under_review", activity.reload.status
+    assert_equal 0, ActivityReview.where(activity_id: activity.id).count
+  end
 end

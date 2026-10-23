@@ -98,7 +98,7 @@ class DailyPointCapTest < ActiveSupport::TestCase
       )
     end
 
-    assert_equal [30, 30], awards.map(&:points)
+    assert_equal [30, 10], awards.map(&:points)
   end
 
   test "challenge points stop at the daily cap too" do

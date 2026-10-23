@@ -67,6 +67,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.index ["user_id", "status"], name: "index_activities_on_user_and_status"
     t.index ["user_id"], name: "index_activities_on_user_id"
     t.check_constraint "active_calories IS NULL OR active_calories >= 0::numeric", name: "activities_nonnegative_calories"
+    t.check_constraint "activity_type::text = ANY (ARRAY['walking'::character varying::text, 'running'::character varying::text, 'cycling'::character varying::text, 'swimming'::character varying::text, 'football'::character varying::text, 'strength_training'::character varying::text, 'golf'::character varying::text])", name: "activities_valid_activity_type"
     t.check_constraint "average_heart_rate IS NULL OR average_heart_rate >= 1 AND average_heart_rate <= 250", name: "activities_valid_heart_rate"
     t.check_constraint "distance_meters IS NULL OR distance_meters >= 0::numeric", name: "activities_nonnegative_distance"
     t.check_constraint "duration_seconds > 0", name: "activities_positive_duration"
@@ -150,12 +151,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.string "status", default: "draft", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "challenge_type", default: "individual", null: false
+    t.integer "team_goal_points"
+    t.datetime "finalized_at"
     t.index ["company_id", "starts_at"], name: "index_challenges_on_company_id_and_starts_at"
     t.index ["company_id", "status"], name: "index_challenges_on_company_id_and_status"
     t.index ["company_id"], name: "index_challenges_on_company_id"
     t.index ["scoring_rule_version_id"], name: "index_challenges_on_scoring_rule_version_id"
+    t.check_constraint "challenge_type::text = ANY (ARRAY['individual'::character varying::text, 'team'::character varying::text])", name: "challenges_valid_type"
     t.check_constraint "ends_at > starts_at", name: "challenges_valid_dates"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'completed'::character varying::text, 'cancelled'::character varying::text])", name: "challenges_valid_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'active'::character varying, 'finalizing'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])", name: "challenges_valid_status"
+    t.check_constraint "team_goal_points IS NULL OR team_goal_points > 0", name: "challenges_positive_team_goal"
   end
 
   create_table "chat_rooms", force: :cascade do |t|
@@ -172,6 +178,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.string "status", default: "active", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "time_zone", default: "UTC", null: false
     t.index ["slug"], name: "index_companies_on_slug", unique: true
   end
 
@@ -184,6 +191,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.datetime "accepted_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "revoked_at"
     t.index ["company_id", "email"], name: "index_invitations_on_company_id_and_email"
     t.index ["company_id"], name: "index_invitations_on_company_id"
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
@@ -201,6 +209,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
+  create_table "refresh_tokens", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "token_digest", null: false
+    t.string "family_id", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "revoked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["family_id"], name: "index_refresh_tokens_on_family_id"
+    t.index ["token_digest"], name: "index_refresh_tokens_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_refresh_tokens_on_user_id"
+  end
+
   create_table "scoring_rule_versions", force: :cascade do |t|
     t.string "name", null: false
     t.integer "version_number", null: false
@@ -213,6 +234,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.check_constraint "jsonb_typeof(rules) = 'object'::text", name: "scoring_rule_versions_rules_must_be_object"
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'retired'::character varying::text])", name: "scoring_rule_versions_valid_status"
     t.check_constraint "version_number > 0", name: "scoring_rule_versions_positive_version"
+  end
+
+  create_table "team_memberships", force: :cascade do |t|
+    t.bigint "team_id", null: false
+    t.bigint "user_id", null: false
+    t.bigint "challenge_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "user_id"], name: "index_team_memberships_on_challenge_and_user", unique: true
+    t.index ["challenge_id"], name: "index_team_memberships_on_challenge_id"
+    t.index ["team_id"], name: "index_team_memberships_on_team_id"
+    t.index ["user_id"], name: "index_team_memberships_on_user_id"
+  end
+
+  create_table "teams", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.string "name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "name"], name: "index_teams_on_challenge_id_and_name", unique: true
+    t.index ["challenge_id"], name: "index_teams_on_challenge_id"
   end
 
   create_table "user_badges", force: :cascade do |t|
@@ -260,6 +302,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "chat_rooms"
   add_foreign_key "messages", "users"
+  add_foreign_key "refresh_tokens", "users"
+  add_foreign_key "team_memberships", "challenges"
+  add_foreign_key "team_memberships", "teams"
+  add_foreign_key "team_memberships", "users"
+  add_foreign_key "teams", "challenges"
   add_foreign_key "user_badges", "activities"
   add_foreign_key "user_badges", "badges"
   add_foreign_key "user_badges", "users"

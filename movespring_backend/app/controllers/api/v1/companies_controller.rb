@@ -19,7 +19,7 @@ class CompaniesController < ApplicationController
       }, status: :ok
     else
       render json: {
-        error: company.errors.full_messages
+        errors: company.errors.full_messages
       }, status: :unprocessable_entity
     end
   end
