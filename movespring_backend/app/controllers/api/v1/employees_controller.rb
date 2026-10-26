@@ -22,6 +22,12 @@ module Api
         employee = find_company_employee
         return unless employee
 
+        if params.dig(:employee, :email).present?
+          return render json: {
+            error: "Email addresses are changed by the employee from their own profile"
+          }, status: :unprocessable_entity
+        end
+
         if employee.update(employee_params)
           render json: {
             message: "Employee updated successfully",
@@ -147,7 +153,7 @@ end
       end
 
       def employee_params
-        params.require(:employee).permit(:name, :email)
+        params.require(:employee).permit(:name)
       end
 
       def employee_json(employee)

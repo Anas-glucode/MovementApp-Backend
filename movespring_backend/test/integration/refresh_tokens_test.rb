@@ -8,6 +8,8 @@ class RefreshTokensTest < ActionDispatch::IntegrationTest
       admin: { name: "Admin", email: "admin@refresh.test",
                password: "password123", password_confirmation: "password123" }
     }
+    User.find_by!(email: "admin@refresh.test").update!(email_verified_at: Time.current)
+
     post "/api/v1/sessions", as: :json,
          params: { email: "admin@refresh.test", password: "password123" }
     response.parsed_body

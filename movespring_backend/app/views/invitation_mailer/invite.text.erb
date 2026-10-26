@@ -1,3 +1,7 @@
-Invitation#invite
+You've been invited to join <%= @company_name %>.
 
-<%= @greeting %>, find me in app/views/invitation_mailer/invite.text.erb
+Accept your invitation here:
+<%= @accept_url %>
+
+This link expires on <%= @expires_at.strftime("%d %B %Y") %>.
+If you weren't expecting this, you can ignore this email.

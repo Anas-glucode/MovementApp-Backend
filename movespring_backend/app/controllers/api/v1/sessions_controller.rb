@@ -16,6 +16,13 @@ rate_limit to: 10, within: 3.minutes, only: [:create, :refresh],
         user = User.find_by(email: email)
 
         if user&.authenticate(password) && user.active? && user.company.active?
+          unless user.email_verified?
+            return render json: {
+              error: "Please verify your email address before logging in",
+              code: "email_not_verified"
+            }, status: :forbidden
+          end
+
           token = TokenService.issue(user)
 
           render json: {

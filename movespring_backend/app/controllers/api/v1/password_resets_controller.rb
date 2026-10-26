@@ -25,10 +25,21 @@ module Api
                         status: :unprocessable_entity
         end
 
-        if user.update(
-          password: params[:password],
-          password_confirmation: params[:password_confirmation]
-        )
+        new_password = params[:password].to_s
+        confirmation = params[:password_confirmation].to_s
+
+        if new_password.blank?
+          return render json: { errors: ["Password can't be blank"] },
+                        status: :unprocessable_entity
+        end
+
+        if confirmation.blank?
+          return render json: {
+            errors: ["Password confirmation can't be blank"]
+          }, status: :unprocessable_entity
+        end
+
+        if user.update(password: new_password, password_confirmation: confirmation)
           render json: { message: "Password updated" }, status: :ok
         else
           render json: { errors: user.errors.full_messages },

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_26_073736) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -199,10 +199,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "revoked_at"
+    t.string "role", default: "employee", null: false
+    t.datetime "email_sent_at"
     t.index ["company_id", "email"], name: "index_invitations_on_company_id_and_email"
+    t.index ["company_id", "email"], name: "index_invitations_one_open_per_company_email", unique: true, where: "((accepted_at IS NULL) AND (revoked_at IS NULL))"
     t.index ["company_id"], name: "index_invitations_on_company_id"
+    t.index ["expires_at"], name: "index_invitations_on_expires_at"
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
     t.index ["token_digest"], name: "index_invitations_on_token_digest", unique: true
+    t.check_constraint "role::text = ANY (ARRAY['employee'::character varying, 'company_admin'::character varying]::text[])", name: "invitations_valid_role"
   end
 
   create_table "messages", force: :cascade do |t|
@@ -224,7 +229,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.datetime "revoked_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_refresh_tokens_on_expires_at"
     t.index ["family_id"], name: "index_refresh_tokens_on_family_id"
+    t.index ["revoked_at"], name: "index_refresh_tokens_on_revoked_at"
     t.index ["token_digest"], name: "index_refresh_tokens_on_token_digest", unique: true
     t.index ["user_id"], name: "index_refresh_tokens_on_user_id"
   end
@@ -286,6 +293,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_121900) do
     t.string "status", default: "active", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "email_verified", default: false, null: false
+    t.datetime "email_verified_at"
+    t.string "email_verification_token_digest"
+    t.datetime "email_verification_expires_at"
+    t.string "unconfirmed_email"
     t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
     t.index ["company_id"], name: "index_users_on_company_id"
   end
