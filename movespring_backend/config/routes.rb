@@ -50,6 +50,12 @@ post   "invitations/:id/resend", to: "invitations#resend"
          post   "badges",     to: "badges#create"
    patch  "badges/:id", to: "badges#update"
    delete "badges/:id", to: "badges#destroy"
+
+         get "announcements", to: "announcements#index"
+         post "announcements", to: "announcements#create"
+         patch "announcements/:id", to: "announcements#update"
+         delete "announcements/:id", to: "announcements#destroy"
+         post "announcements/:id/dismiss", to: "announcements#dismiss"
       
 
       resources :chat_rooms, only: [] do

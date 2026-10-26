@@ -7,6 +7,9 @@ class User < ApplicationRecord
   has_many :joined_challenges, through: :challenge_participations, source: :challenge
   has_many :messages, dependent: :destroy
   has_many :refresh_tokens, dependent: :destroy
+  has_many :announcement_dismissals, dependent: :destroy
+  has_many :dismissed_announcements, through: :announcement_dismissals,
+                                    source: :announcement
 
   after_update :revoke_refresh_tokens, if: -> {
   saved_change_to_password_digest? || (saved_change_to_status? && inactive?)
