@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_26_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,6 +103,59 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
     t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
   end
 
+  create_table "announcement_broadcasts", force: :cascade do |t|
+    t.bigint "announcement_id"
+    t.bigint "company_id", null: false
+    t.string "event_key", null: false
+    t.string "event_type", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "available_at", null: false
+    t.datetime "claimed_at"
+    t.datetime "broadcasted_at"
+    t.text "last_error"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "announcement_reference_id"
+    t.index ["announcement_id"], name: "index_announcement_broadcasts_on_announcement_id"
+    t.index ["announcement_reference_id"], name: "index_announcement_broadcasts_on_announcement_reference"
+    t.index ["company_id"], name: "index_announcement_broadcasts_on_company_id"
+    t.index ["event_key"], name: "index_announcement_broadcasts_on_event_key", unique: true
+    t.index ["status", "available_at"], name: "index_announcement_broadcasts_on_status_and_available_at"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'broadcasted'::character varying, 'discarded'::character varying]::text[])", name: "announcement_broadcasts_valid_status"
+  end
+
+  create_table "announcement_comments", force: :cascade do |t|
+    t.bigint "announcement_id", null: false
+    t.bigint "user_id", null: false
+    t.bigint "parent_id"
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["announcement_id", "created_at", "id"], name: "index_announcement_comments_on_announcement_created_id"
+    t.index ["announcement_id"], name: "index_announcement_comments_on_announcement_id"
+    t.index ["parent_id"], name: "index_announcement_comments_on_parent_id"
+    t.index ["user_id"], name: "index_announcement_comments_on_user_id"
+  end
+
+  create_table "announcement_deliveries", force: :cascade do |t|
+    t.bigint "announcement_id", null: false
+    t.bigint "push_token_id"
+    t.bigint "user_id", null: false
+    t.string "status", default: "pending", null: false
+    t.integer "attempt_count", default: 0, null: false
+    t.datetime "claimed_at"
+    t.datetime "delivered_at"
+    t.text "last_error"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["announcement_id", "push_token_id"], name: "index_announcement_deliveries_on_announcement_and_token", unique: true
+    t.index ["announcement_id", "status"], name: "index_announcement_deliveries_on_announcement_and_status"
+    t.index ["announcement_id"], name: "index_announcement_deliveries_on_announcement_id"
+    t.index ["push_token_id"], name: "index_announcement_deliveries_on_push_token_id"
+    t.index ["user_id"], name: "index_announcement_deliveries_on_user_id"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'delivered'::character varying, 'failed'::character varying, 'unknown'::character varying]::text[])", name: "announcement_deliveries_valid_status"
+  end
+
   create_table "announcement_dismissals", force: :cascade do |t|
     t.bigint "announcement_id", null: false
     t.bigint "user_id", null: false
@@ -110,6 +163,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
     t.datetime "updated_at", null: false
     t.index ["announcement_id", "user_id"], name: "index_announcement_dismissals_on_announcement_and_user", unique: true
     t.index ["announcement_id"], name: "index_announcement_dismissals_on_announcement_id"
+    t.index ["user_id", "announcement_id"], name: "index_announcement_dismissals_on_user_and_announcement"
     t.index ["user_id"], name: "index_announcement_dismissals_on_user_id"
   end
 
@@ -122,6 +176,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "notifications_sent_at"
+    t.datetime "delivery_prepared_at"
     t.index ["company_id", "active", "starts_at"], name: "index_announcements_on_company_id_and_active_and_starts_at"
     t.index ["company_id"], name: "index_announcements_on_company_id"
     t.check_constraint "ends_at IS NULL OR ends_at > starts_at", name: "announcements_valid_dates"
@@ -240,6 +296,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
     t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
+  create_table "push_tokens", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token"], name: "index_push_tokens_on_token", unique: true
+    t.index ["user_id"], name: "index_push_tokens_on_user_id"
+  end
+
   create_table "refresh_tokens", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "token_digest", null: false
@@ -311,6 +376,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
+    t.index ["company_id", "status"], name: "index_users_on_company_id_and_status"
     t.index ["company_id"], name: "index_users_on_company_id"
   end
 
@@ -321,6 +387,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
   add_foreign_key "activity_point_awards", "scoring_rule_versions"
   add_foreign_key "activity_reviews", "activities"
   add_foreign_key "activity_reviews", "users", column: "reviewer_id"
+  add_foreign_key "announcement_broadcasts", "announcements", on_delete: :nullify
+  add_foreign_key "announcement_broadcasts", "companies"
+  add_foreign_key "announcement_comments", "announcement_comments", column: "parent_id"
+  add_foreign_key "announcement_comments", "announcements"
+  add_foreign_key "announcement_comments", "users"
+  add_foreign_key "announcement_deliveries", "announcements"
+  add_foreign_key "announcement_deliveries", "push_tokens", on_delete: :nullify
+  add_foreign_key "announcement_deliveries", "users"
   add_foreign_key "announcement_dismissals", "announcements"
   add_foreign_key "announcement_dismissals", "users"
   add_foreign_key "announcements", "companies"
@@ -337,6 +411,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_080000) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "chat_rooms"
   add_foreign_key "messages", "users"
+  add_foreign_key "push_tokens", "users"
   add_foreign_key "refresh_tokens", "users"
   add_foreign_key "team_memberships", "challenges"
   add_foreign_key "team_memberships", "teams"

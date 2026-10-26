@@ -16,3 +16,6 @@ production:
   challenge_lifecycle:
     class: ChallengeLifecycleJob
     schedule: every 5 minutes
+  announcement_recovery:
+    class: AnnouncementRecoveryJob
+    schedule: every 5 minutes

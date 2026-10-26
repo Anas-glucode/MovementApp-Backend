@@ -4,6 +4,7 @@ class Company < ApplicationRecord
   has_many :invitations, dependent: :destroy
   has_many :challenges, dependent: :restrict_with_error
   has_many :announcements, dependent: :destroy
+  has_many :announcement_broadcasts, dependent: :destroy
 
   enum :status, {
     active: "active",

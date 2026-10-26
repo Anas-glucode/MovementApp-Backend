@@ -10,6 +10,9 @@ class User < ApplicationRecord
   has_many :announcement_dismissals, dependent: :destroy
   has_many :dismissed_announcements, through: :announcement_dismissals,
                                     source: :announcement
+  has_many :push_tokens, dependent: :destroy
+  has_many :announcement_comments, dependent: :destroy
+  has_many :announcement_deliveries, dependent: :destroy
 
   after_update :revoke_refresh_tokens, if: -> {
   saved_change_to_password_digest? || (saved_change_to_status? && inactive?)
