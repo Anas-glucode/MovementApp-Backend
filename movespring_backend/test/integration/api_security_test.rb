@@ -54,6 +54,90 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
     assert_equal @admin.id, body.dig("user", "id")
   end
 
+  test "unverified users are refused login only after correct password authentication" do
+    @admin.update!(email_verified_at: nil)
+
+    post "/api/v1/sessions",
+         params: { email: @admin.email, password: "Password123!" },
+         as: :json
+
+    assert_response :forbidden
+    assert_equal "Please verify your email address before logging in",
+                 response.parsed_body["error"]
+    assert_equal "email_not_verified", response.parsed_body["code"]
+    assert_empty @admin.refresh_tokens
+
+    post "/api/v1/sessions",
+         params: { email: @admin.email, password: "WrongPassword123!" },
+         as: :json
+
+    assert_response :unauthorized
+    assert_equal "Invalid email or password, or account inactive",
+                 response.parsed_body["error"]
+  end
+
+  test "email verification links verify the account and cannot be reused" do
+    @admin.update!(email_verified_at: nil)
+    token = @admin.generate_token_for(:email_verification)
+
+    post "/api/v1/email_verifications",
+         params: { token: token },
+         as: :json
+
+    assert_response :ok
+    assert_equal "Email verified. You can now log in.",
+                 response.parsed_body["message"]
+    assert @admin.reload.email_verified?
+
+    post "/api/v1/email_verifications",
+         params: { token: token },
+         as: :json
+
+    assert_response :unprocessable_entity
+  end
+
+  test "email verification rejects invalid tokens" do
+    post "/api/v1/email_verifications",
+         params: { token: "invalid-token" },
+         as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal "Invalid or expired verification link",
+                 response.parsed_body["error"]
+  end
+
+  test "resending verification sends mail only when required and returns a generic response" do
+    @admin.update!(email_verified_at: nil)
+
+    assert_enqueued_emails 1 do
+      post "/api/v1/email_verifications/resend",
+           params: { email: @admin.email },
+           as: :json
+
+      assert_response :ok
+    end
+    message = response.parsed_body["message"]
+    assert_equal "If that account needs verification, a new link has been sent",
+                 message
+
+    assert_no_enqueued_emails do
+      post "/api/v1/email_verifications/resend",
+           params: { email: unique_email },
+           as: :json
+    end
+    assert_response :ok
+    assert_equal message, response.parsed_body["message"]
+
+    @admin.update!(email_verified_at: Time.current)
+    assert_no_enqueued_emails do
+      post "/api/v1/email_verifications/resend",
+           params: { email: @admin.email },
+           as: :json
+    end
+    assert_response :ok
+    assert_equal message, response.parsed_body["message"]
+  end
+
   test "refreshing a session rotates the refresh token" do
     old_refresh_token = RefreshTokenService.issue(@admin)
 
@@ -163,7 +247,52 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
     assert_equal "Invitation created successfully", body["message"]
     assert body.dig("invitation", "id").present?
+    assert_equal "employee", body.dig("invitation", "role")
     assert body["invitation_token"].present?
+  end
+
+  test "invitation list includes email delivery status" do
+    result = InvitationService.call(invited_by: @admin, email: unique_email)
+    invitation = result.fetch(:invitation)
+    InvitationMailer.invite(invitation, result.fetch(:token)).deliver_now
+
+    get "/api/v1/invitations", headers: auth_headers(@admin)
+
+    assert_response :ok
+    details = response.parsed_body.fetch("invitations")
+                      .find { |item| item["id"] == invitation.id }
+    assert_equal invitation.role, details["role"]
+    assert_in_delta invitation.reload.email_sent_at.to_f,
+                    Time.iso8601(details.fetch("email_sent_at")).to_f,
+                    0.001
+  end
+
+  test "company administrators can invite another company administrator" do
+    email = unique_email
+
+    post "/api/v1/invitations",
+         params: { invitation: { email: email, role: "company_admin" } },
+         headers: auth_headers(@admin),
+         as: :json
+
+    assert_response :created
+    body = response.parsed_body
+    assert_equal "company_admin", body.dig("invitation", "role")
+
+    post "/api/v1/invitations/accept",
+         params: {
+           token: body["invitation_token"],
+           name: "New Admin",
+           password: "Password123!",
+           password_confirmation: "Password123!"
+         },
+         as: :json
+
+    assert_response :created
+    invited_user = User.find_by!(email: email)
+    assert invited_user.company_admin?
+    assert invited_user.email_verified?
+    assert_equal "company_admin", response.parsed_body.dig("user", "role")
   end
 
   test "resending an invitation returns the token outside production and emails it" do
@@ -221,6 +350,50 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
     assert_not invitation.reload.revoked?
   end
 
+  test "invitation preview returns details without consuming the invitation" do
+    result = InvitationService.call(
+      invited_by: @admin,
+      email: unique_email
+    )
+    invitation = result.fetch(:invitation)
+
+    get "/api/v1/invitations/preview",
+        params: { token: result.fetch(:token) }
+
+    assert_response :ok
+    assert_equal invitation.email, response.parsed_body.dig("invitation", "email")
+    assert_equal @company.name,
+                 response.parsed_body.dig("invitation", "company_name")
+    assert_in_delta invitation.expires_at.to_f,
+                    Time.iso8601(
+                      response.parsed_body.dig("invitation", "expires_at")
+                    ).to_f,
+                    0.001
+    assert invitation.reload.usable?
+    assert_nil invitation.accepted_at
+  end
+
+  test "invitation preview hides invalid and inactive-company invitations" do
+    get "/api/v1/invitations/preview", params: { token: "invalid-token" }
+
+    assert_response :not_found
+    assert_equal "Invalid or expired invitation",
+                 response.parsed_body["error"]
+
+    result = InvitationService.call(
+      invited_by: @admin,
+      email: unique_email
+    )
+    @company.update!(status: "inactive")
+
+    get "/api/v1/invitations/preview",
+        params: { token: result.fetch(:token) }
+
+    assert_response :not_found
+    assert_equal "Invalid or expired invitation",
+                 response.parsed_body["error"]
+  end
+
   test "invitation acceptance creates an employee in the correct company" do
     email = unique_email
 
@@ -253,6 +426,7 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
     assert_equal @company.id, user.company_id
     assert user.employee?
     assert user.active?
+    assert user.email_verified?
     assert_equal user.id, body.dig("user", "id")
     assert result[:invitation].reload.accepted?
 
@@ -498,12 +672,11 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
   end
 
 
-  test "company administrators can update employee details" do
+  test "company administrators can update employee names" do
     patch "/api/v1/employees/#{@employee.id}",
           params: {
             employee: {
-              name: "Updated Employee",
-              email: unique_email
+              name: "Updated Employee"
             }
           },
           headers: auth_headers(@admin),
@@ -615,6 +788,32 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
 
     @other_employee.reload
     assert_equal "Employee Two", @other_employee.name
+  end
+
+  test "administrators cannot change an employee email" do
+    old_email = @employee.email
+
+    patch "/api/v1/employees/#{@employee.id}",
+          params: { employee: { email: "admin-controlled@example.com" } },
+          headers: auth_headers(@admin),
+          as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal(
+      "Email addresses are changed by the employee from their own profile",
+      response.parsed_body["error"]
+    )
+    assert_equal old_email, @employee.reload.email
+  end
+
+  test "administrators can still update an employee name" do
+    patch "/api/v1/employees/#{@employee.id}",
+          params: { employee: { name: "Updated Employee" } },
+          headers: auth_headers(@admin),
+          as: :json
+
+    assert_response :ok
+    assert_equal "Updated Employee", @employee.reload.name
   end
 
   test "company administrators cannot change roles or manage another company's invitations" do
@@ -956,7 +1155,8 @@ class ApiSecurityTest < ActionDispatch::IntegrationTest
       password: "Password123!",
       password_confirmation: "Password123!",
       role: role,
-      status: "active"
+      status: "active",
+      email_verified_at: Time.current
     )
   end
 

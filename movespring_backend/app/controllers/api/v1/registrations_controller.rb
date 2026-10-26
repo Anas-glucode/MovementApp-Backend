@@ -25,20 +25,26 @@ rate_limit to: 10, within: 3.minutes, only: :create,
           )
         end
 
-        render json: {
-          message: "Company registered successfully",
-          company: {
-            id: @company.id,
-            name: @company.name,
-            slug: @company.slug
-          },
+        # The admin was created with email_verified_at = nil, so they can't log in
+        # yet. Mail them their "key card".
+        token = @user.generate_token_for(:email_verification)
+        EmailVerificationMailer.verify(@user, token).deliver_later
+
+        response_body = {
+          message: "Company registered. Check your email to verify your account.",
+          company: { id: @company.id, name: @company.name, slug: @company.slug },
           admin: {
             id: @user.id,
             name: @user.name,
             email: @user.email,
             role: @user.role
           }
-        }, status: :created
+        }
+
+        # Same pattern as invitations: handy for testing, never exposed in production.
+        response_body[:verification_token] = token unless Rails.env.production?
+
+        render json: response_body, status: :created
 
       rescue ActiveRecord::RecordInvalid => e
         render json: {

@@ -85,6 +85,38 @@ RSpec.describe "Api::V1::PasswordResets", type: :request do
       expect(response.parsed_body["error"]).to eq("Invalid or expired token")
     end
 
+    it "rejects a blank password without changing the password or consuming the token" do
+      token = user.password_reset_token
+
+      patch "/api/v1/password_resets",
+            params: {
+              token: token,
+              password: "   ",
+              password_confirmation: "   "
+            },
+            as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["errors"]).to eq(["Password can't be blank"])
+      expect(user.reload.authenticate("Password123!")).to be_truthy
+      expect(User.find_by_password_reset_token(token)).to eq(user)
+    end
+
+    it "rejects a missing password confirmation without changing the password or consuming the token" do
+      token = user.password_reset_token
+
+      patch "/api/v1/password_resets",
+            params: { token: token, password: "UpdatedPassword123!" },
+            as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body["errors"]).to eq(
+        ["Password confirmation can't be blank"]
+      )
+      expect(user.reload.authenticate("Password123!")).to be_truthy
+      expect(User.find_by_password_reset_token(token)).to eq(user)
+    end
+
     it "rejects an expired reset token" do
       token = user.password_reset_token
 

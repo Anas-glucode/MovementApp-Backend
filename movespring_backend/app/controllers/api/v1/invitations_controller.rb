@@ -2,13 +2,20 @@
 module Api
   module V1
     class InvitationsController < ApplicationController
-      skip_before_action :authenticate_user!, only: [:accept]
+      skip_before_action :authenticate_user!, only: [:accept, :preview]
       before_action :require_company_admin!, only: [:create, :index, :destroy, :resend]
+
+      rate_limit to: 20, within: 3.minutes, only: [:accept, :preview],
+        with: -> {
+          render json: { error: "Too many attempts. Try again later." },
+                 status: :too_many_requests
+        }
 
       def create
         result = InvitationService.call(
           invited_by: current_user,
-          email: invitation_params[:email]
+          email: invitation_params[:email],
+          role: invitation_params[:role]
         )
 
         if result[:invitation]
@@ -17,6 +24,7 @@ module Api
             invitation: {
               id: result[:invitation].id,
               email: result[:invitation].email,
+              role: result[:invitation].role,
               expires_at: result[:invitation].expires_at
             }
           }
@@ -65,10 +73,34 @@ module Api
         end
       end
 
+      def preview
+        invitation = Invitation.find_usable_by_token(params[:token])
+
+        unless invitation && invitation.company.active?
+          return render json: { error: "Invalid or expired invitation" },
+                        status: :not_found
+        end
+
+        render json: {
+          invitation: {
+            email: invitation.email,
+            company_name: invitation.company.name,
+            role: invitation.role,
+            expires_at: invitation.expires_at
+          }
+        }, status: :ok
+      end
+
       def index
   invitations = current_user.company.invitations.pending.order(created_at: :desc)
   render json: { invitations: invitations.map { |i|
-    { id: i.id, email: i.email, expires_at: i.expires_at }
+    {
+      id: i.id,
+      email: i.email,
+      role: i.role,
+      email_sent_at: i.email_sent_at,
+      expires_at: i.expires_at
+    }
   } }
 end
 
@@ -89,7 +121,11 @@ def resend
   result = nil
   Invitation.transaction do
     old.update_columns(revoked_at: Time.current)   # cancel the old link
-    result = InvitationService.call(invited_by: current_user, email: old.email)
+    result = InvitationService.call(
+      invited_by: current_user,
+      email: old.email,
+      role: old.role
+    )
     raise ActiveRecord::Rollback unless result[:invitation]  # undo if new one fails
   end
 
@@ -116,7 +152,7 @@ end
       end
 
       def invitation_params
-        params.require(:invitation).permit(:email)
+        params.require(:invitation).permit(:email, :role)
       end
     end
   end

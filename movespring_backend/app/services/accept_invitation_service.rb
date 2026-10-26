@@ -1,14 +1,9 @@
 
 class AcceptInvitationService
   def self.call(token:, name:, password:, password_confirmation:)
-    raw_token = token.to_s
-    return { errors: ["Invalid or expired invitation"] } if raw_token.blank?
+    invitation = Invitation.find_usable_by_token(token)
 
-    digest = Digest::SHA256.hexdigest(raw_token)
-
-    invitation = Invitation.find_by(token_digest: digest)
-
-    unless invitation&.usable?
+    unless invitation
       return { errors: ["Invalid or expired invitation"] }
     end
 
@@ -27,8 +22,9 @@ class AcceptInvitationService
         email: invitation.email,
         password: password,
         password_confirmation: password_confirmation,
-        role: "employee",
-        status: "active"
+        role: invitation.role,
+        status: "active",
+        email_verified_at: Time.current
       )
 
       invitation.update!(accepted_at: Time.current)

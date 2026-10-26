@@ -2,6 +2,15 @@
 class Invitation < ApplicationRecord
   attr_accessor :raw_token
 
+  def self.find_usable_by_token(raw_token)
+    return nil if raw_token.blank?
+
+    digest = Digest::SHA256.hexdigest(raw_token.to_s)
+    invitation = find_by(token_digest: digest)
+
+    invitation if invitation&.usable?
+  end
+
   belongs_to :company
   belongs_to :invited_by, class_name: "User"
 
@@ -10,6 +19,7 @@ class Invitation < ApplicationRecord
 
   validates :email, presence: true,
                     format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :role, inclusion: { in: User.roles.keys }
 
   validates :token_digest, presence: true, uniqueness: true
   validates :expires_at, presence: true
@@ -38,7 +48,7 @@ class Invitation < ApplicationRecord
   end
 
   def usable?
-    !accepted? && !revoked? && !expired?
+    !accepted? && !revoked? && !expired? && company.active?
   end
 
   private
