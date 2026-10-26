@@ -12,7 +12,10 @@ module ApplicationCable
       payload = TokenService.decode(request.params[:token].to_s)
       user = payload && User.find_by(id: payload["sub"])
 
-      if user&.active? && user.company.active?
+      if user&.active? && user.company.active? &&
+         ActiveSupport::SecurityUtils.secure_compare(
+           user.password_salt.last(10), payload["pwd"].to_s
+         )
         user
       else
         reject_unauthorized_connection

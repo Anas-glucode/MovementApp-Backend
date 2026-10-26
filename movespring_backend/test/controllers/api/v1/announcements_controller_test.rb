@@ -2,7 +2,6 @@
 require "test_helper"
 
 class Api::V1::AnnouncementsControllerTest < ActionDispatch::IntegrationTest
-
 setup do
   @admin = users(:one)
 
@@ -199,7 +198,7 @@ end
     assert_response :ok
 
     announcements = response.parsed_body.fetch("announcements")
-    assert_equal [visible.id], announcements.pluck("id")
+    assert_equal [ visible.id ], announcements.pluck("id")
   end
 
   test "employee listing does not include another company's announcements" do

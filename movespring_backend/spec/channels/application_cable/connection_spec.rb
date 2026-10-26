@@ -16,4 +16,13 @@ RSpec.describe ApplicationCable::Connection, type: :channel do
     expect { connect "/cable" }.to have_rejected_connection
     expect { connect "/cable", params: { token: "garbage" } }.to have_rejected_connection
   end
+
+  it "rejects a token issued before the user's password changed" do
+    old_token = TokenService.issue(user)
+    user.update!(password: "new-password-123")
+
+    expect do
+      connect "/cable", params: { token: old_token }
+    end.to have_rejected_connection
+  end
 end

@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check
+  mount ActionCable.server => "/cable"
   
   namespace :api do
     namespace :v1 do
@@ -56,6 +57,16 @@ post   "invitations/:id/resend", to: "invitations#resend"
          patch "announcements/:id", to: "announcements#update"
          delete "announcements/:id", to: "announcements#destroy"
          post "announcements/:id/dismiss", to: "announcements#dismiss"
+         get "announcements/:announcement_id/comments",
+             to: "announcement_comments#index"
+         post "announcements/:announcement_id/comments",
+              to: "announcement_comments#create"
+         patch "announcements/:announcement_id/comments/:id",
+               to: "announcement_comments#update"
+         delete "announcements/:announcement_id/comments/:id",
+                to: "announcement_comments#destroy"
+         post "push_tokens", to: "push_tokens#create"
+         delete "push_tokens", to: "push_tokens#destroy"
       
 
       resources :chat_rooms, only: [] do
