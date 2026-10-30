@@ -18,6 +18,7 @@ class ActivityPointAward < ApplicationRecord
   # are safely saved. Badges are a bonus: if the badge check ever breaks, the
   # activity must still stay logged, so errors are logged, never raised.
   after_create_commit :award_badges
+  after_create_commit :evaluate_personal_records
 
   private
 
@@ -28,4 +29,12 @@ class ActivityPointAward < ApplicationRecord
       "[Badges] activity=#{activity_id} evaluation failed: #{e.class}: #{e.message}"
     )
   end
+
+  def evaluate_personal_records
+  PersonalRecordEvaluationService.call(activity: activity)
+rescue StandardError => e
+  Rails.logger.error(
+    "[PersonalRecords] activity=#{activity_id} evaluation failed: #{e.class}: #{e.message}"
+  )
+end
 end

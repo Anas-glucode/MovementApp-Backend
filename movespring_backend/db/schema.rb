@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_26_073736) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_30_081614) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -221,6 +221,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_073736) do
     t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
+  create_table "personal_record_events", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "activity_id"
+    t.string "record_type", null: false
+    t.decimal "previous_value", precision: 15, scale: 2
+    t.decimal "new_value", precision: 15, scale: 2, null: false
+    t.datetime "achieved_at", null: false
+    t.datetime "read_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["activity_id"], name: "index_personal_record_events_on_activity_id"
+    t.index ["user_id", "achieved_at"], name: "index_personal_record_events_on_user_id_and_achieved_at"
+    t.index ["user_id", "record_type", "activity_id"], name: "index_personal_record_events_uniquely_per_activity", unique: true, where: "(activity_id IS NOT NULL)"
+    t.index ["user_id"], name: "index_personal_record_events_on_user_id"
+    t.check_constraint "new_value >= 0::numeric", name: "personal_record_events_nonnegative_new_value"
+    t.check_constraint "previous_value IS NULL OR new_value > previous_value", name: "personal_record_events_must_improve_record"
+    t.check_constraint "previous_value IS NULL OR previous_value >= 0::numeric", name: "personal_record_events_nonnegative_previous_value"
+  end
+
   create_table "refresh_tokens", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "token_digest", null: false
@@ -269,6 +288,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_073736) do
     t.datetime "updated_at", null: false
     t.index ["challenge_id", "name"], name: "index_teams_on_challenge_id_and_name", unique: true
     t.index ["challenge_id"], name: "index_teams_on_challenge_id"
+    t.index ["id", "challenge_id"], name: "index_teams_on_id_and_challenge_id", unique: true
   end
 
   create_table "user_badges", force: :cascade do |t|
@@ -322,9 +342,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_26_073736) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "chat_rooms"
   add_foreign_key "messages", "users"
+  add_foreign_key "personal_record_events", "activities", on_delete: :nullify
+  add_foreign_key "personal_record_events", "users"
   add_foreign_key "refresh_tokens", "users"
   add_foreign_key "team_memberships", "challenges"
   add_foreign_key "team_memberships", "teams"
+  add_foreign_key "team_memberships", "teams", column: ["team_id", "challenge_id"], primary_key: ["id", "challenge_id"], name: "fk_team_memberships_team_challenge_consistency"
   add_foreign_key "team_memberships", "users"
   add_foreign_key "teams", "challenges"
   add_foreign_key "user_badges", "activities"

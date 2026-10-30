@@ -66,4 +66,51 @@ class PointsCalculatorTest < ActiveSupport::TestCase
       )
     end
   end
+  test "applies the moderate multiplier at intensity 5" do
+    points = PointsCalculator.call(
+      activity: build_activity(type: "walking", minutes: 30, intensity: 5),
+      rules: @rules
+    )
+
+    assert_equal 30, points
+  end
+
+  test "intensity 3 uses the low multiplier" do
+    points = PointsCalculator.call(
+      activity: build_activity(type: "walking", minutes: 30, intensity: 3),
+      rules: @rules
+    )
+
+    assert_equal 24, points
+  end
+
+  test "intensity 6 uses the moderate multiplier" do
+    points = PointsCalculator.call(
+      activity: build_activity(type: "walking", minutes: 30, intensity: 6),
+      rules: @rules
+    )
+
+    assert_equal 30, points
+  end
+
+  test "applies a configured manual activity multiplier" do
+    manual_rules = @rules.deep_dup
+    manual_rules["manual_multiplier"] = 0.5
+
+    activity = build_activity(type: "walking", minutes: 30)
+    activity.source = "manual"
+
+    points = PointsCalculator.call(activity: activity, rules: manual_rules)
+
+    assert_equal 15, points
+  end
+
+  test "manual activities use a multiplier of 1 when none is configured" do
+    activity = build_activity(type: "walking", minutes: 30)
+    activity.source = "manual"
+
+    points = PointsCalculator.call(activity: activity, rules: @rules)
+
+    assert_equal 30, points
+  end
 end

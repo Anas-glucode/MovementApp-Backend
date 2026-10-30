@@ -150,4 +150,62 @@ class TeamIntegrityTest < ActiveSupport::TestCase
     assert result[:errors].present?
     assert_equal 0, @challenge.teams.count
   end
+
+  test "a membership cannot connect a team to a different challenge" do
+    user = build_user(80)
+    sign_up(user)
+
+    team = Team.create!(challenge: @challenge, name: "Team A")
+
+    other_challenge = Challenge.create!(
+      company: @company,
+      scoring_rule_version: @version,
+      name: "Other Integrity Challenge",
+      status: "published",
+      challenge_type: "team",
+      starts_at: 2.days.from_now,
+      ends_at: 5.days.from_now
+    )
+
+    membership = TeamMembership.new(
+      team: team,
+      user: user,
+      challenge: other_challenge
+    )
+
+    assert_not membership.valid?
+    assert_includes membership.errors.full_messages,
+                    "Challenge must match the team's challenge"
+  end
+
+
+  test "the database rejects a membership with a mismatched challenge" do
+    user = build_user(81)
+    sign_up(user)
+
+    team = Team.create!(challenge: @challenge, name: "Database Integrity Team")
+
+    other_challenge = Challenge.create!(
+      company: @company,
+      scoring_rule_version: @version,
+      name: "Database Integrity Other Challenge",
+      status: "published",
+      challenge_type: "team",
+      starts_at: 2.days.from_now,
+      ends_at: 5.days.from_now
+    )
+
+    membership = TeamMembership.new(
+      team: team,
+      user: user,
+      challenge: other_challenge
+    )
+
+    assert_raises(ActiveRecord::InvalidForeignKey) do
+      membership.save!(validate: false)
+    end
+
+    assert_equal 0, TeamMembership.where(user: user).count
+  end
+
 end

@@ -10,12 +10,13 @@
 class ActivityStreaks
   MIN_ACTIVE_SECONDS_PER_DAY = 10 * 60
 
-  def self.call(user:)
-    new(user).call
+  def self.call(user:, excluding_activity_id: nil)
+    new(user, excluding_activity_id: excluding_activity_id).call
   end
 
-  def initialize(user)
+  def initialize(user, excluding_activity_id: nil)
     @user = user
+    @excluding_activity_id = excluding_activity_id
   end
 
   def call
@@ -41,9 +42,12 @@ class ActivityStreaks
   def active_dates
     seconds_by_date = Hash.new(0)
 
-    @user.activities
-         .where(status: "eligible")
-         .pluck(:started_at, :duration_seconds)
+    activities = @user.activities.where(status: "eligible")
+    if @excluding_activity_id.present?
+      activities = activities.where.not(id: @excluding_activity_id)
+    end
+
+    activities.pluck(:started_at, :duration_seconds)
          .each do |started_at, duration|
       seconds_by_date[started_at.in_time_zone(zone).to_date] += duration.to_i
     end
