@@ -53,9 +53,22 @@ post   "invitations/:id/resend", to: "invitations#resend"
       get  "challenges/:challenge_id/teams",   to: "teams#index"
       post "challenges/:challenge_id/teams",   to: "teams#create"
       get  "challenges/:challenge_id/my_team", to: "teams#mine"
-         post   "badges",     to: "badges#create"
-   patch  "badges/:id", to: "badges#update"
-   delete "badges/:id", to: "badges#destroy"
+         get    "badges",     to: "badges#index"
+get    "my_badges",  to: "badges#user_badges"
+post   "badges",     to: "badges#create"
+patch  "badges/:id", to: "badges#update"
+delete "badges/:id", to: "badges#destroy"
+get "personal_record_events",
+    to: "personal_record_events#index"
+
+get "personal_record_events/unread_count",
+    to: "personal_record_events#unread_count"
+
+patch "personal_record_events/read_all",
+      to: "personal_record_events#mark_all_read"
+
+patch "personal_record_events/:id/read",
+      to: "personal_record_events#mark_read"
       
 
       resources :chat_rooms, only: [] do

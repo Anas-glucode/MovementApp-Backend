@@ -3,6 +3,7 @@ class Activity < ApplicationRecord
   has_one :activity_point_award, dependent: :destroy
   has_one :activity_review, dependent: :restrict_with_error
   has_many :challenge_activity_awards, dependent: :destroy
+  has_many :personal_record_events, dependent: :nullify
 
   SOURCES = %w[healthkit health_connect manual].freeze
 

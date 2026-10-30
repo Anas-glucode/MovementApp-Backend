@@ -10,19 +10,30 @@
 # turns BigDecimal into a STRING in JSON ("12000.0"), which is awkward for
 # the app.
 class PersonalRecords
-  def self.call(user:)
-    new(user).call
-  end
+  def self.call(user:, excluding_activity_id: nil)
+  new(user, excluding_activity_id: excluding_activity_id).call
+end
 
-  def initialize(user)
-    @user = user
-  end
+ def initialize(user, excluding_activity_id: nil)
+  @user = user
+  @excluding_activity_id = excluding_activity_id
+end
 
   def call
-    rows = @user.activities
-                .where(status: "eligible")
-                .pluck(:started_at, :activity_type, :steps, :distance_meters,
-                       :duration_seconds, :active_calories)
+ activities = @user.activities.where(status: "eligible")
+
+if @excluding_activity_id.present?
+  activities = activities.where.not(id: @excluding_activity_id)
+end
+
+rows = activities.pluck(
+  :started_at,
+  :activity_type,
+  :steps,
+  :distance_meters,
+  :duration_seconds,
+  :active_calories
+)
 
     steps_by_day = Hash.new(0)
     seconds_by_day = Hash.new(0)
@@ -43,7 +54,10 @@ class PersonalRecords
     end
 
     points_by_day, points_by_week = points_totals
-    streaks = ActivityStreaks.call(user: @user)
+    streaks = ActivityStreaks.call(
+  user: @user,
+  excluding_activity_id: @excluding_activity_id
+)
 
     {
       # per single activity (old names kept)
@@ -89,9 +103,15 @@ class PersonalRecords
     by_day = Hash.new(0)
     by_week = Hash.new(0)
 
-    ActivityPointAward
+    awards = ActivityPointAward
       .joins(:activity)
       .where(activities: { user_id: @user.id, status: "eligible" })
+
+    if @excluding_activity_id.present?
+      awards = awards.where.not(activities: { id: @excluding_activity_id })
+    end
+
+    awards
       .pluck("activities.started_at", "activity_point_awards.points")
       .each do |started_at, points|
       day = local_date(started_at)

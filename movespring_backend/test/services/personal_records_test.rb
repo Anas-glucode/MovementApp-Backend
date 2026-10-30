@@ -92,6 +92,32 @@ class PersonalRecordsTest < ActiveSupport::TestCase
     assert_equal 0, records[:active_days]
   end
 
+  test "excludes the selected activity from point totals" do
+    included = create_activity(
+      started_at: Time.utc(2026, 10, 21, 18),
+      activity_type: "walking",
+      steps: 1_000,
+      distance_meters: 500,
+      duration_seconds: 600,
+      active_calories: 50
+    )
+    excluded = create_activity(
+      started_at: Time.utc(2026, 10, 21, 19),
+      activity_type: "walking",
+      steps: 2_000,
+      distance_meters: 1_000,
+      duration_seconds: 600,
+      active_calories: 100
+    )
+    create_point_award(included, 30)
+    create_point_award(excluded, 40)
+
+    records = PersonalRecords.call(user: @user, excluding_activity_id: excluded.id)
+
+    assert_equal 30, records[:max_points_in_a_day]
+    assert_equal 30, records[:max_points_in_a_week]
+  end
+
   private
 
   def create_activity(started_at:, activity_type:, steps:, distance_meters:,
