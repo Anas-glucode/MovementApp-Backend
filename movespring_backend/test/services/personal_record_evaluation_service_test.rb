@@ -108,6 +108,69 @@ class PersonalRecordEvaluationServiceTest < ActiveSupport::TestCase
     end
   end
 
+
+  test "creates a notification when a new personal record is achieved" do
+    activity = create_activity(
+      activity_type: "running",
+      distance_meters: 5_000,
+      duration_seconds: 1_800,
+      steps: 6_000
+    )
+
+    create_point_award(activity, 50)
+
+    notification = Notification.find_by!(
+      user: @user,
+      notification_type: "personal_record"
+    )
+
+    event = PersonalRecordEvent.find_by!(
+      user: @user,
+      activity: activity,
+      record_type: "longest_run"
+    )
+
+    assert_equal "New personal record!", notification.title
+    assert_equal event.id, notification.notifiable_id
+    assert_equal "PersonalRecordEvent", notification.notifiable_type
+    assert_equal event.id, notification.data["personal_record_event_id"]
+    assert_nil notification.read_at
+  end
+
+  
+  test "does not create duplicate notifications when an activity is evaluated twice" do
+    activity = create_activity(
+      activity_type: "running",
+      distance_meters: 5_000,
+      duration_seconds: 1_800,
+      steps: 6_000
+    )
+
+    create_point_award(activity, 50)
+
+    # One activity can establish multiple personal records.
+    # Each newly created record should have its own notification.
+    event_count = PersonalRecordEvent.where(
+      user: @user,
+      activity: activity
+    ).count
+
+    notification_count = Notification.where(
+      user: @user,
+      notification_type: "personal_record"
+    ).count
+
+    assert_operator event_count, :>, 0
+    assert_equal event_count, notification_count
+
+    # Evaluating the same activity again must not create more notifications.
+    assert_no_difference "Notification.count" do
+      PersonalRecordEvaluationService.call(activity: activity)
+    end
+  end
+
+
+
   private
 
   def create_activity(activity_type:, distance_meters:, duration_seconds:,

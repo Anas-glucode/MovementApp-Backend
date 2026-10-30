@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_30_081614) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_30_093113) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -221,6 +221,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_081614) do
     t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
+  create_table "notifications", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "notification_type", null: false
+    t.string "title", null: false
+    t.text "message", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "notifiable_type"
+    t.bigint "notifiable_id"
+    t.datetime "read_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["notifiable_type", "notifiable_id"], name: "index_notifications_on_notifiable_type_and_notifiable_id"
+    t.index ["user_id", "created_at"], name: "index_notifications_on_user_id_and_created_at"
+    t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
+    t.index ["user_id"], name: "index_notifications_on_user_id"
+  end
+
   create_table "personal_record_events", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.bigint "activity_id"
@@ -342,6 +359,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_081614) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "chat_rooms"
   add_foreign_key "messages", "users"
+  add_foreign_key "notifications", "users"
   add_foreign_key "personal_record_events", "activities", on_delete: :nullify
   add_foreign_key "personal_record_events", "users"
   add_foreign_key "refresh_tokens", "users"

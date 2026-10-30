@@ -8,6 +8,7 @@ class User < ApplicationRecord
   has_many :messages, dependent: :destroy
   has_many :refresh_tokens, dependent: :destroy
   has_many :personal_record_events, dependent: :destroy
+has_many :notifications, dependent: :destroy
 
   after_update :revoke_refresh_tokens, if: -> {
     saved_change_to_password_digest? ||

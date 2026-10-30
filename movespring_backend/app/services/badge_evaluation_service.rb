@@ -113,19 +113,38 @@ class BadgeEvaluationService
   # A savepoint (requires_new) keeps a "duplicate" failure from poisoning any
   # bigger transaction this might run inside. If the badge was already earned,
   # for example by a parallel request a moment ago, that is fine: do nothing.
-  def award_badge(badge)
-    user_badge = UserBadge.transaction(requires_new: true) do
-      UserBadge.create!(
-        user: @user,
-        badge: badge,
-        activity: @activity,
-        earned_at: Time.current
-      )
-    end
-
-    @newly_awarded << user_badge
-    user_badge
-  rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
-    nil
+  
+def award_badge(badge)
+  user_badge = UserBadge.transaction(requires_new: true) do
+    UserBadge.create!(
+      user: @user,
+      badge: badge,
+      activity: @activity,
+      earned_at: Time.current
+    )
   end
+
+  @newly_awarded << user_badge
+
+  NotificationCreationService.call(
+    user: @user,
+    notification_type: "badge_earned",
+    title: "New badge earned!",
+    message: "Congratulations! You've earned the #{badge.name} badge.",
+    data: {
+      badge_id: badge.id,
+      badge_name: badge.name,
+      user_badge_id: user_badge.id
+    },
+    notifiable: user_badge
+  )
+
+  user_badge
+rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique => e
+  nil
+end
+
+
+     rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique => e
+    nil
 end

@@ -90,6 +90,62 @@ class BadgesTest < ActiveSupport::TestCase
     assert earned?(badge)
   end
 
+  
+# ---- badge notifications ----
+test "earning a badge creates a notification" do
+  badge = build_badge(
+    category: "steps",
+    criteria_type: "single_activity",
+    value: 10_000
+  )
+
+  activity = make_activity(steps: 12_000)
+
+  evaluate(activity)
+
+  user_badge = UserBadge.find_by(user: @user, badge: badge)
+  notification = Notification.find_by(
+    user: @user,
+    notification_type: "badge_earned"
+  )
+
+  assert user_badge.present?
+  assert notification.present?
+  assert_equal "New badge earned!", notification.title
+  assert_includes notification.message, badge.name
+  assert_equal "UserBadge", notification.notifiable_type
+  assert_equal user_badge.id, notification.notifiable_id
+  assert_equal badge.id, notification.data["badge_id"]
+  assert_equal badge.name, notification.data["badge_name"]
+  assert_nil notification.read_at
+end
+
+test "evaluating an already earned badge does not create duplicate notifications" do
+  badge = build_badge(
+    category: "steps",
+    criteria_type: "single_activity",
+    value: 10_000
+  )
+
+  activity = make_activity(steps: 12_000)
+
+  evaluate(activity)
+  first_notification_count = Notification.where(
+    user: @user,
+    notification_type: "badge_earned"
+  ).count
+
+  evaluate(activity)
+
+  assert_equal 1, first_notification_count
+  assert_equal first_notification_count,
+               Notification.where(
+                 user: @user,
+                 notification_type: "badge_earned"
+               ).count
+end
+
+
   # ---- no double awards ----
   test "a badge is only ever awarded once" do
     badge = build_badge(category: "steps", criteria_type: "cumulative", value: 100)

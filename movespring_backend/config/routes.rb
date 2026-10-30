@@ -69,6 +69,17 @@ patch "personal_record_events/read_all",
 
 patch "personal_record_events/:id/read",
       to: "personal_record_events#mark_read"
+      get "notifications",
+    to: "notifications#index"
+
+get "notifications/unread_count",
+    to: "notifications#unread_count"
+
+patch "notifications/read_all",
+      to: "notifications#mark_all_read"
+
+patch "notifications/:id/read",
+      to: "notifications#mark_read"
       
 
       resources :chat_rooms, only: [] do
