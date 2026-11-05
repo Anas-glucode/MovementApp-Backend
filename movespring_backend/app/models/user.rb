@@ -1,13 +1,21 @@
 class User < ApplicationRecord
   belongs_to :company
-     has_many :user_badges, dependent: :destroy
-   has_many :badges, through: :user_badges
+
+  has_many :user_badges, dependent: :destroy
+  has_many :badges, through: :user_badges
   has_many :activities, dependent: :destroy
   has_many :challenge_participations, dependent: :destroy
   has_many :joined_challenges, through: :challenge_participations, source: :challenge
   has_many :messages, dependent: :destroy
   has_many :refresh_tokens, dependent: :destroy
   has_many :personal_record_events, dependent: :destroy
+  has_many :notifications, dependent: :destroy
+  has_many :announcement_reads, dependent: :destroy
+
+  has_many :created_announcements,
+           class_name: "Announcement",
+           foreign_key: :created_by_id,
+           dependent: :restrict_with_error
 
   after_update :revoke_refresh_tokens, if: -> {
     saved_change_to_password_digest? ||

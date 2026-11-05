@@ -28,11 +28,16 @@ class TeamAssignmentService
 
       # Count members per team, fewest first. Ties go to the lowest id.
       # left_joins keeps teams that have zero members in the list.
-      smallest = @challenge.teams
-                           .left_joins(:team_memberships)
-                           .group("teams.id")
-                           .order(Arel.sql("COUNT(team_memberships.id) ASC, teams.id ASC"))
-                           .first
+     smallest = @challenge.teams
+                     .left_joins(team_memberships: :user)
+                     .group("teams.id")
+                     .order(
+                       Arel.sql(
+                         "COUNT(CASE WHEN users.status = 'active' " \
+                         "THEN team_memberships.id END) ASC, teams.id ASC"
+                       )
+                     )
+                     .first
 
       smallest.team_memberships.create!(user: @user, challenge: @challenge)
       smallest

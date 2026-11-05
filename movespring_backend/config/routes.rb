@@ -69,6 +69,27 @@ patch "personal_record_events/read_all",
 
 patch "personal_record_events/:id/read",
       to: "personal_record_events#mark_read"
+      get "notifications",
+    to: "notifications#index"
+
+get "notifications/unread_count",
+    to: "notifications#unread_count"
+
+patch "notifications/read_all",
+      to: "notifications#mark_all_read"
+
+patch "notifications/:id/read",
+      to: "notifications#mark_read"
+
+           
+           get "announcements", to: "announcements#index"
+      post "announcements", to: "announcements#create"
+      get "announcements/:id", to: "announcements#show"
+      patch "announcements/:id", to: "announcements#update"
+      patch "announcements/:id/publish", to: "announcements#publish"
+      patch "announcements/:id/archive", to: "announcements#archive"
+      patch "announcements/:id/read", to: "announcements#mark_read"
+      delete "announcements/:id", to: "announcements#destroy"
       
 
       resources :chat_rooms, only: [] do

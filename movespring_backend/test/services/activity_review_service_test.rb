@@ -146,4 +146,94 @@ class ActivityReviewServiceTest < ActiveSupport::TestCase
     assert_equal "under_review", activity.reload.status
     assert_equal 0, ActivityReview.where(activity_id: activity.id).count
   end
+
+    test "approving an activity creates an approval notification for the employee" do
+    activity = create_waiting_activity(@employee)
+
+    review = ActivityReviewService.call(
+      activity: activity,
+      reviewer: @admin,
+      decision: "approved"
+    )
+
+    notification = @employee.notifications.find_by!(
+      notification_type: "activity_approved",
+      notifiable: review
+    )
+
+    assert_equal "Activity approved!", notification.title
+    assert_includes notification.message, "walking"
+    assert_equal activity.id, notification.data["activity_id"]
+    assert_equal review.id, notification.data["review_id"]
+    assert_equal "approved", notification.data["decision"]
+    assert_nil notification.read_at
+
+    assert_equal 0, @admin.notifications.where(
+      notification_type: "activity_approved"
+    ).count
+  end
+
+    test "rejecting an activity creates a rejection notification with the reason" do
+    activity = create_waiting_activity(@employee)
+    reason = "Activity details could not be verified"
+
+    review = ActivityReviewService.call(
+      activity: activity,
+      reviewer: @admin,
+      decision: "rejected",
+      reason: reason
+    )
+
+    notification = @employee.notifications.find_by!(
+      notification_type: "activity_rejected",
+      notifiable: review
+    )
+
+    assert_equal "Activity rejected", notification.title
+    assert_includes notification.message, reason
+    assert_equal activity.id, notification.data["activity_id"]
+    assert_equal review.id, notification.data["review_id"]
+    assert_equal "rejected", notification.data["decision"]
+    assert_equal reason, notification.data["reason"]
+    assert_nil notification.read_at
+  end
+
+    test "failed review does not create a notification" do
+    activity = create_waiting_activity(@admin)
+
+    assert_raises(ActivityReviewService::ReviewError) do
+      ActivityReviewService.call(
+        activity: activity,
+        reviewer: @admin,
+        decision: "approved"
+      )
+    end
+
+    assert_equal 0, @admin.notifications.count
+  end
+
+  test "notification failure does not undo a successful approval" do
+  activity = create_waiting_activity(@employee)
+
+  original_call = NotificationCreationService.method(:call)
+
+  NotificationCreationService.define_singleton_method(:call) do |**_args|
+    raise StandardError, "Notification service unavailable"
+  end
+
+  begin
+    review = ActivityReviewService.call(
+      activity: activity,
+      reviewer: @admin,
+      decision: "approved"
+    )
+
+    assert_equal "approved", review.decision
+    assert_equal "eligible", activity.reload.status
+    assert activity.activity_point_award.present?
+  ensure
+    NotificationCreationService.define_singleton_method(:call, original_call)
+  end
+end
+
 end

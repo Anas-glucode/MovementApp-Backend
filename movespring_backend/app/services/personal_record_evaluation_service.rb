@@ -38,19 +38,33 @@ class PersonalRecordEvaluationService
 
         next unless new_value > previous_value
 
-        PersonalRecordEvent.create_or_find_by!(
+        event = PersonalRecordEvent.create_or_find_by!(
           user: @user,
           activity: @activity,
           record_type: record_type
-        ) do |event|
-          event.previous_value =
+        ) do |record_event|
+          record_event.previous_value =
             previous_value.positive? ? previous_value : nil
 
-          event.new_value = new_value
-          event.achieved_at = @activity.started_at || Time.current
+          record_event.new_value = new_value
+          record_event.achieved_at = @activity.started_at || Time.current
         end
+
+        next unless event.previously_new_record?
+
+        NotificationCreationService.call(
+          user: @user,
+          notification_type: "personal_record",
+          title: "New personal record!",
+          message: "Congratulations! You've achieved a new personal record: #{record_type.humanize}.",
+          data: {
+            personal_record_event_id: event.id,
+            record_type: record_type,
+            new_value: new_value
+          },
+          notifiable: event
+        )
       end
     end
   end
 end
-

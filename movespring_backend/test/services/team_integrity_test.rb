@@ -141,6 +141,42 @@ class TeamIntegrityTest < ActiveSupport::TestCase
     assert_equal [2, 2], sizes
   end
 
+    test "late joiner is assigned using active member counts only" do
+    users = Array.new(5) { |i| build_user(90 + i) }
+    users.each { |user| sign_up(user) }
+
+    team_a = Team.create!(challenge: @challenge, name: "Team A")
+    team_b = Team.create!(challenge: @challenge, name: "Team B")
+
+    # Team A has three memberships.
+    users[0..2].each do |user|
+      TeamMembership.create!(team: team_a, user: user, challenge: @challenge)
+    end
+
+    # Team B has two memberships.
+    users[3..4].each do |user|
+      TeamMembership.create!(team: team_b, user: user, challenge: @challenge)
+    end
+
+    # Two members of Team A become inactive.
+    users[1].update!(status: "inactive")
+    users[2].update!(status: "inactive")
+
+    # Team A now has 1 active member; Team B has 2.
+    # Its total membership count is still higher (3 versus 2).
+    latecomer = build_user(95)
+    sign_up(latecomer)
+
+    assigned_team = TeamAssignmentService.call(
+      challenge: @challenge,
+      user: latecomer
+    )
+
+    assert_equal team_a.id, assigned_team.id
+    assert_equal 2, team_a.members.where(status: "active").count
+    assert_equal 2, team_b.members.where(status: "active").count
+  end
+
   test "forming teams is refused once the challenge has started" do
     4.times { |i| sign_up(build_user(70 + i)) }
     @challenge.update_columns(status: "active", starts_at: 1.hour.ago)

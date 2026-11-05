@@ -1,8 +1,8 @@
-
 class Company < ApplicationRecord
   has_many :users, dependent: :restrict_with_error
   has_many :invitations, dependent: :destroy
   has_many :challenges, dependent: :restrict_with_error
+  has_many :announcements, dependent: :restrict_with_error
 
   enum :status, {
     active: "active",
@@ -17,19 +17,18 @@ class Company < ApplicationRecord
 
   private
 
- def generate_slug
-  # Fall back to "company" if the name has no Latin letters
-  base = name.parameterize.presence || "company"
-  candidate = base
-  counter = 2
+  def generate_slug
+    # Fall back to "company" if the name has no Latin letters
+    base = name.parameterize.presence || "company"
+    candidate = base
+    counter = 2
 
-  # Keep adding -2, -3... until nothing else uses the slug
-  while Company.exists?(slug: candidate)
-    candidate = "#{base}-#{counter}"
-    counter += 1
+    # Keep adding -2, -3... until nothing else uses the slug
+    while Company.exists?(slug: candidate)
+      candidate = "#{base}-#{counter}"
+      counter += 1
+    end
+
+    self.slug = candidate
   end
-
-  self.slug = candidate
-end
-
 end
