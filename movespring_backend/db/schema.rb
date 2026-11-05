@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_30_093113) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_05_073804) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -101,6 +101,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_093113) do
     t.index ["reviewer_id"], name: "index_activity_reviews_on_reviewer_id"
     t.check_constraint "decision::text <> 'rejected'::text OR length(TRIM(BOTH FROM reason)) > 0", name: "activity_reviews_rejection_requires_reason"
     t.check_constraint "decision::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying]::text[])", name: "activity_reviews_valid_decision"
+  end
+
+  create_table "announcement_reads", force: :cascade do |t|
+    t.bigint "announcement_id", null: false
+    t.bigint "user_id", null: false
+    t.datetime "read_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["announcement_id", "user_id"], name: "index_announcement_reads_on_announcement_and_user", unique: true
+    t.index ["announcement_id"], name: "index_announcement_reads_on_announcement_id"
+    t.index ["user_id"], name: "index_announcement_reads_on_user_id"
+  end
+
+  create_table "announcements", force: :cascade do |t|
+    t.bigint "company_id", null: false
+    t.bigint "created_by_id", null: false
+    t.string "title", null: false
+    t.text "body", null: false
+    t.datetime "published_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "status", default: "draft", null: false
+    t.index ["company_id", "published_at"], name: "index_announcements_on_company_id_and_published_at"
+    t.index ["company_id", "status", "published_at"], name: "index_announcements_on_company_id_and_status_and_published_at"
+    t.index ["company_id"], name: "index_announcements_on_company_id"
+    t.index ["created_by_id"], name: "index_announcements_on_created_by_id"
   end
 
   create_table "badges", force: :cascade do |t|
@@ -346,6 +372,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_093113) do
   add_foreign_key "activity_point_awards", "scoring_rule_versions"
   add_foreign_key "activity_reviews", "activities"
   add_foreign_key "activity_reviews", "users", column: "reviewer_id"
+  add_foreign_key "announcement_reads", "announcements"
+  add_foreign_key "announcement_reads", "users"
+  add_foreign_key "announcements", "companies"
+  add_foreign_key "announcements", "users", column: "created_by_id"
   add_foreign_key "badges", "companies"
   add_foreign_key "challenge_activity_awards", "activities"
   add_foreign_key "challenge_activity_awards", "challenges"
